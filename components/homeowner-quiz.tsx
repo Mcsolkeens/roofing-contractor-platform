@@ -12,13 +12,12 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-type ShingleType = "asphalt" | "metal" | "cedar" | "slate"
+type ProductType = "shingles" | "flat" | "metal"
 
-const shingleOptions: { id: ShingleType; label: string; desc: string }[] = [
-  { id: "asphalt", label: "Asphalt", desc: "Most popular & affordable" },
-  { id: "metal", label: "Metal", desc: "Durable & energy efficient" },
-  { id: "cedar", label: "Cedar shake", desc: "Natural, premium look" },
-  { id: "slate", label: "Slate", desc: "Luxury, lasts a lifetime" },
+const productOptions: { id: ProductType; label: string; desc: string }[] = [
+  { id: "shingles", label: "Shingles", desc: "Classic & versatile" },
+  { id: "flat", label: "Flat roof", desc: "Modern, low-slope" },
+  { id: "metal", label: "Metal roof", desc: "Durable & efficient" },
 ]
 
 const colorOptions = [
@@ -70,7 +69,7 @@ const TOTAL_STEPS = 3
 export function HomeownerQuiz() {
   const [step, setStep] = useState(0)
   const [postal, setPostal] = useState("")
-  const [shingle, setShingle] = useState<ShingleType | null>(null)
+  const [product, setProduct] = useState<ProductType | null>(null)
   const [color, setColor] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
 
@@ -85,7 +84,7 @@ export function HomeownerQuiz() {
   function reset() {
     setStep(0)
     setPostal("")
-    setShingle(null)
+    setProduct(null)
     setColor(null)
     setSubmitted(false)
   }
@@ -159,7 +158,7 @@ export function HomeownerQuiz() {
                           value={postal}
                           onChange={(e) => setPostal(e.target.value.toUpperCase())}
                           placeholder="e.g. M5V 2T6"
-                          className="h-12 w-full rounded-lg border border-input bg-background pl-10 pr-3 text-base outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/30"
+                          className="h-12 w-full rounded-lg border border-input bg-background pl-10 pr-3 text-base outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/30"
                         />
                       </div>
                     </div>
@@ -174,22 +173,24 @@ export function HomeownerQuiz() {
                   </div>
                 )}
 
-                {/* Step 1 — shingle type */}
+                {/* Step 1 — product type */}
                 {step === 1 && (
                   <div>
-                    <h3 className="font-heading text-2xl font-bold">What kind of roof?</h3>
-                    <p className="mt-2 text-muted-foreground">Pick the material you&apos;re after.</p>
-                    <div className="mt-6 grid grid-cols-2 gap-3">
-                      {shingleOptions.map((opt) => {
-                        const active = shingle === opt.id
+                    <h3 className="font-heading text-2xl font-bold">Choose your product</h3>
+                    <p className="mt-2 text-muted-foreground">
+                      Pick the type of roof you&apos;re after.
+                    </p>
+                    <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      {productOptions.map((opt) => {
+                        const active = product === opt.id
                         return (
                           <button
                             key={opt.id}
                             type="button"
-                            onClick={() => setShingle(opt.id)}
+                            onClick={() => setProduct(opt.id)}
                             className={`rounded-xl border p-4 text-left transition-all ${
                               active
-                                ? "border-accent bg-accent/10 ring-2 ring-accent/30"
+                                ? "border-primary bg-primary/5 ring-2 ring-primary/30"
                                 : "border-border hover:border-foreground/30"
                             }`}
                           >
@@ -207,7 +208,7 @@ export function HomeownerQuiz() {
                       </Button>
                       <Button
                         onClick={next}
-                        disabled={!shingle}
+                        disabled={!product}
                         className="h-12 flex-1 bg-accent text-base text-accent-foreground hover:bg-accent/90"
                       >
                         Continue
@@ -234,7 +235,7 @@ export function HomeownerQuiz() {
                             onClick={() => setColor(opt.id)}
                             className={`rounded-xl border p-3 text-center transition-all ${
                               active
-                                ? "border-accent ring-2 ring-accent/30"
+                                ? "border-primary ring-2 ring-primary/30"
                                 : "border-border hover:border-foreground/30"
                             }`}
                           >

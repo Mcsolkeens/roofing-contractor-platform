@@ -12,7 +12,7 @@ export function Hero() {
           </span>
 
           <h1 className="mt-6 font-heading text-5xl font-bold leading-[0.95] tracking-tight text-balance sm:text-6xl lg:text-7xl">
-            Your new roof, <span className="text-accent">matched</span> in minutes.
+            Your new roof, <span className="text-primary">matched</span> in minutes.
           </h1>
 
           <p className="mt-6 max-w-md text-lg leading-relaxed text-muted-foreground text-pretty">

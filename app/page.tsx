@@ -6,11 +6,10 @@ import { HomeownerQuiz } from "@/components/homeowner-quiz"
 import { ContractorRegister } from "@/components/contractor-register"
 import { Faq } from "@/components/faq"
 import { SiteFooter } from "@/components/site-footer"
-import { DesignShell } from "@/components/design-toggle"
 
 export default function Page() {
   return (
-    <DesignShell>
+    <>
       <SiteHeader />
       <main>
         <Hero />
@@ -21,6 +20,6 @@ export default function Page() {
         <Faq />
       </main>
       <SiteFooter />
-    </DesignShell>
+    </>
   )
 }

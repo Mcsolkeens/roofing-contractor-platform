@@ -35,13 +35,11 @@ export function HowItWorks() {
           {steps.map((step, i) => (
             <div
               key={step.title}
-              className="group relative rounded-2xl border border-border bg-card p-8 transition-colors hover:border-accent"
+              className="group relative rounded-2xl border border-border bg-card p-8 transition-colors hover:border-primary"
             >
-              <span className="font-heading text-6xl font-bold text-muted-foreground/15">
-                0{i + 1}
-              </span>
-              <span className="mt-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-foreground">
-                <step.icon className="h-6 w-6 text-background" />
+              <span className="font-heading text-6xl font-bold text-accent">0{i + 1}</span>
+              <span className="mt-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
+                <step.icon className="h-6 w-6 text-primary-foreground" />
               </span>
               <h3 className="mt-5 font-heading text-xl font-bold">{step.title}</h3>
               <p className="mt-2 leading-relaxed text-muted-foreground">{step.desc}</p>
