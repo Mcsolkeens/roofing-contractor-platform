@@ -4,15 +4,27 @@ import { Button } from "@/components/ui/button"
 const columns = [
   {
     title: "Homeowners",
-    links: ["How it works", "Get matched", "Browse contractors", "Reviews"],
+    links: [
+      { label: "How it works", href: "#how-it-works" },
+      { label: "Find a roofer", href: "#get-matched" },
+      { label: "FAQ", href: "#faq" },
+    ],
   },
   {
     title: "Contractors",
-    links: ["Join the network", "Contractor login", "Pricing", "Resources"],
+    links: [
+      { label: "Join the network", href: "#contractors" },
+      { label: "Contractor login", href: "#contractors" },
+    ],
   },
   {
     title: "Company",
-    links: ["About", "Careers", "Contact", "Privacy"],
+    links: [
+      { label: "About", href: "#" },
+      { label: "Contact", href: "#" },
+      { label: "Privacy", href: "#" },
+      { label: "Admin", href: "/admin" },
+    ],
   },
 ]
 
@@ -61,12 +73,12 @@ export function SiteFooter() {
               </h3>
               <ul className="mt-4 space-y-3">
                 {col.links.map((link) => (
-                  <li key={link}>
+                  <li key={link.label}>
                     <a
-                      href="#"
+                      href={link.href}
                       className="text-sm text-muted-foreground transition-colors hover:text-foreground"
                     >
-                      {link}
+                      {link.label}
                     </a>
                   </li>
                 ))}

@@ -123,9 +123,9 @@ export class EagleViewProvider implements MeasurementProvider {
   }
 
   async createJob(address: string): Promise<MeasurementJob> {
-    const res = await fetch(`${this.baseUrl}/v2/measurement-orders`, {
+    const res = await this.fetchWithTimeout(`${this.baseUrl}/v2/measurement-orders`, {
       method: "POST",
-      headers: this.headers(),
+      headers: await this.headers(),
       body: JSON.stringify({ address, productType: "residential-roof" }),
     })
     if (!res.ok) throw new Error(`EagleView createJob failed (${res.status})`)
@@ -140,8 +140,8 @@ export class EagleViewProvider implements MeasurementProvider {
   }
 
   async getStatus(jobId: string): Promise<MeasurementJobStatus> {
-    const res = await fetch(`${this.baseUrl}/v2/measurement-orders/${jobId}`, {
-      headers: this.headers(),
+    const res = await this.fetchWithTimeout(`${this.baseUrl}/v2/measurement-orders/${jobId}`, {
+      headers: await this.headers(),
     })
     if (!res.ok) throw new Error(`EagleView getStatus failed (${res.status})`)
     const data = (await res.json()) as { status?: string; message?: string }
@@ -150,8 +150,8 @@ export class EagleViewProvider implements MeasurementProvider {
 
   private async download(jobId: string, kind: "report" | "materials"): Promise<ReportFile> {
     const path = kind === "report" ? "report" : "materials-list"
-    const res = await fetch(`${this.baseUrl}/v2/measurement-orders/${jobId}/${path}`, {
-      headers: { ...this.headers(), Accept: "application/pdf" },
+    const res = await this.fetchWithTimeout(`${this.baseUrl}/v2/measurement-orders/${jobId}/${path}`, {
+      headers: { ...(await this.headers()), Accept: "application/pdf" },
     })
     if (!res.ok) throw new Error(`EagleView download ${kind} failed (${res.status})`)
     const buf = Buffer.from(await res.arrayBuffer())
