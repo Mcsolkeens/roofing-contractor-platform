@@ -72,8 +72,25 @@ export function HomeownerQuiz() {
   const [product, setProduct] = useState<ProductType | null>(null)
   const [color, setColor] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
   const postalValid = postal.trim().length >= 3
+
+  async function submitRequest() {
+    setSubmitting(true)
+    try {
+      await fetch("/api/measurement", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postalCode: postal, product, color }),
+      })
+    } catch (err) {
+      console.log("[v0] measurement request failed:", (err as Error).message)
+    } finally {
+      setSubmitting(false)
+      setSubmitted(true)
+    }
+  }
 
   function next() {
     setStep((s) => Math.min(s + 1, TOTAL_STEPS))
@@ -98,17 +115,17 @@ export function HomeownerQuiz() {
               For homeowners
             </p>
             <h2 className="mt-3 font-heading text-4xl font-bold tracking-tight text-balance sm:text-5xl">
-              Find your contractor in a few taps.
+              Tell us about your roof.
             </h2>
             <p className="mt-5 text-lg leading-relaxed text-muted-foreground text-pretty">
-              No phone tag. No endless forms. Just answer a few questions and we&apos;ll match you
-              with approved roofers who fit your project — completely free.
+              Answer three quick questions and we&apos;ll show you roofing companies near you. It&apos;s
+              free, and you choose who to talk to.
             </p>
             <ul className="mt-8 space-y-3">
               {[
-                "Every contractor is vetted and approved",
-                "Compare quotes side by side",
-                "Your details are never sold or spammed",
+                "We check every company before they show up here",
+                "Compare a few quotes before you decide",
+                "We don't sell your phone number or email",
               ].map((item) => (
                 <li key={item} className="flex items-center gap-3 text-sm">
                   <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent">
@@ -317,10 +334,11 @@ export function HomeownerQuiz() {
                         <ArrowLeft className="h-5 w-5" />
                       </Button>
                       <Button
-                        onClick={() => setSubmitted(true)}
+                        onClick={submitRequest}
+                        disabled={submitting}
                         className="h-12 flex-1 bg-accent text-base text-accent-foreground hover:bg-accent/90"
                       >
-                        Request free quotes
+                        {submitting ? "Sending…" : "Request free quotes"}
                       </Button>
                     </div>
                   </div>
@@ -331,11 +349,12 @@ export function HomeownerQuiz() {
                 <span className="flex h-16 w-16 items-center justify-center rounded-full bg-accent">
                   <CheckCircle2 className="h-9 w-9 text-accent-foreground" />
                 </span>
-                <h3 className="mt-6 font-heading text-2xl font-bold">You&apos;re all set!</h3>
+                <h3 className="mt-6 font-heading text-2xl font-bold">Thanks — we&apos;ve got it.</h3>
                 <p className="mt-2 max-w-sm text-muted-foreground text-pretty">
-                  We&apos;re preparing your roof measurements and notifying matched contractors near{" "}
-                  <span className="font-medium text-foreground">{postal}</span>. Expect free quotes
-                  within 24 hours.
+                  We&apos;re pulling together your roof measurements and passing them to the roofers
+                  you picked near{" "}
+                  <span className="font-medium text-foreground">{postal}</span>. Expect to hear from
+                  them in the next day or two.
                 </p>
                 <Button variant="outline" onClick={reset} className="mt-8 h-11">
                   Start a new request

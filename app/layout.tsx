@@ -14,9 +14,9 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'RoofPitch — Get matched with top roofing contractors',
+  title: 'RoofPitch — Find a local roofer worth hiring',
   description:
-    'RoofPitch connects homeowners with approved local roofing contractors. Answer a few questions, get matched, and get the job done right.',
+    "Answer a few questions and see roofing companies near you that we've already checked out. Free for homeowners, and you choose who to talk to.",
   generator: 'v0.app',
   icons: {
     icon: [

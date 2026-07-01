@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 
 const navLinks = [
   { label: "How it works", href: "#how-it-works" },
-  { label: "Get matched", href: "#get-matched" },
+  { label: "Find a roofer", href: "#get-matched" },
   { label: "For contractors", href: "#contractors" },
   { label: "FAQ", href: "#faq" },
 ]
@@ -45,7 +45,7 @@ export function SiteHeader() {
             render={<a href="#get-matched" />}
             className="bg-accent text-accent-foreground hover:bg-accent/90"
           >
-            Get matched
+            Find a roofer
           </Button>
         </div>
 
@@ -78,7 +78,7 @@ export function SiteHeader() {
               render={<a href="#get-matched" onClick={() => setOpen(false)} />}
               className="mt-2 bg-accent text-accent-foreground hover:bg-accent/90"
             >
-              Get matched
+              Find a roofer
             </Button>
           </nav>
         </div>

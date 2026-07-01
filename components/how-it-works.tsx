@@ -4,17 +4,17 @@ const steps = [
   {
     icon: ClipboardList,
     title: "Tell us about your roof",
-    desc: "Answer a few quick questions about your location, shingle type, and color preferences. Takes about a minute.",
+    desc: "Your postal code, the type of roof you want, and the colour you're leaning toward. Takes about a minute, and you don't need an account.",
   },
   {
     icon: Users,
-    title: "Get matched instantly",
-    desc: "We surface approved, top-rated contractors near you. Swipe through profiles and pick the ones you like.",
+    title: "See who's available nearby",
+    desc: "We show you a short list of roofing companies close to you that we've already checked out. Look through them and pick the ones you like.",
   },
   {
     icon: Hammer,
-    title: "Get the job done right",
-    desc: "Receive free quotes, compare them, and hire with confidence. Every contractor on RoofPitch is vetted.",
+    title: "Talk to roofers on your terms",
+    desc: "The companies you picked get in touch with a quote, usually within a day or two. Compare them, ask questions, and hire whoever feels right.",
   },
 ]
 
@@ -27,7 +27,7 @@ export function HowItWorks() {
             How it works
           </p>
           <h2 className="mt-3 font-heading text-4xl font-bold tracking-tight text-balance sm:text-5xl">
-            Three steps to a better roof.
+            Getting quotes takes about a minute.
           </h2>
         </div>
 

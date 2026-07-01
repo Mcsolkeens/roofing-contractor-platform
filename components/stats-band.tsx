@@ -1,8 +1,8 @@
 const stats = [
-  { value: "2,400+", label: "Roofs matched" },
-  { value: "850+", label: "Approved contractors" },
-  { value: "4.9/5", label: "Average homeowner rating" },
-  { value: "<24h", label: "Average quote time" },
+  { value: "Free", label: "for homeowners, always" },
+  { value: "Local", label: "roofers in your area" },
+  { value: "Checked", label: "we review every company" },
+  { value: "1–2 days", label: "to hear back with quotes" },
 ]
 
 export function StatsBand() {

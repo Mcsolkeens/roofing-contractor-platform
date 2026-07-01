@@ -23,10 +23,10 @@ export function SiteFooter() {
         <div className="flex flex-col items-start justify-between gap-6 rounded-2xl bg-foreground p-8 text-background sm:flex-row sm:items-center sm:p-12">
           <div>
             <h2 className="font-heading text-3xl font-bold tracking-tight text-balance sm:text-4xl">
-              Ready for a better roof?
+              Thinking about a new roof?
             </h2>
             <p className="mt-2 text-background/70">
-              Get matched with approved contractors in minutes.
+              Answer a few questions and we&apos;ll show you roofers near you. It&apos;s free.
             </p>
           </div>
           <Button
@@ -35,7 +35,7 @@ export function SiteFooter() {
             size="lg"
             className="h-12 shrink-0 bg-accent px-7 text-base text-accent-foreground hover:bg-accent/90"
           >
-            Get matched free
+            See roofers near me
             <ArrowRight className="ml-1 h-5 w-5" />
           </Button>
         </div>
@@ -49,7 +49,8 @@ export function SiteFooter() {
               <span className="font-heading text-xl font-bold tracking-tight">RoofPitch</span>
             </a>
             <p className="mt-4 max-w-xs text-sm text-muted-foreground">
-              Connecting homeowners with approved roofing contractors across Canada.
+              We help homeowners find roofing companies they can trust — and help good roofers find
+              work.
             </p>
           </div>
 

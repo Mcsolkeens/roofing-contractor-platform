@@ -7,18 +7,18 @@ import { Button } from "@/components/ui/button"
 const perks = [
   {
     icon: TrendingUp,
-    title: "Qualified leads, not tire-kickers",
-    desc: "Homeowners come to you ready to hire, with project details already filled in.",
+    title: "Homeowners who are ready to hire",
+    desc: "Every lead comes with the address, roof type, and measurements already sorted out — so you can quote without a site visit.",
   },
   {
     icon: BadgeCheck,
-    title: "An approved badge that builds trust",
-    desc: "Stand out with a verified profile that homeowners know they can rely on.",
+    title: "A profile homeowners trust",
+    desc: "Once we've checked your company out, you get a verified badge on your listing that sets you apart.",
   },
   {
     icon: CalendarClock,
-    title: "You control your schedule",
-    desc: "Accept the jobs that fit your crew and your calendar. No obligations.",
+    title: "Only the jobs you want",
+    desc: "Take the leads that fit your crew and your calendar. Skip the rest — there's no penalty for passing.",
   },
 ]
 
@@ -46,11 +46,12 @@ export function ContractorRegister() {
               For contractors
             </p>
             <h2 className="mt-3 font-heading text-4xl font-bold tracking-tight text-balance sm:text-5xl">
-              Grow your roofing business with RoofPitch.
+              Get roofing jobs from homeowners ready to hire.
             </h2>
             <p className="mt-5 max-w-md text-lg leading-relaxed text-background/70 text-pretty">
-              Join a network of approved contractors and get matched with homeowners who are ready
-              to start their project. Apply once — our team reviews every application.
+              List your company and we&apos;ll send you leads from homeowners in your area — each one
+              with the roof details already worked out. Apply once, and we&apos;ll review your
+              business before you go live.
             </p>
 
             <div className="mt-10 space-y-6">

@@ -5,24 +5,24 @@ import { Plus, Minus } from "lucide-react"
 
 const faqs = [
   {
-    q: "How much does RoofPitch cost homeowners?",
-    a: "It's completely free for homeowners. You answer a few questions, get matched with approved contractors, and receive quotes at no cost or obligation.",
+    q: "What does it cost me as a homeowner?",
+    a: "Nothing. You answer a few questions, we show you roofing companies near you, and you get quotes for free. The roofing companies pay to be listed — you don't.",
   },
   {
-    q: "How are contractors approved?",
-    a: "Every contractor applies to join and is reviewed by our team. We verify their business details, service area, and track record before they can appear in matches.",
+    q: "How do you decide which companies get listed?",
+    a: "Every company applies to be listed, and we check their business details, service area, and past work before they show up here. If they don't pass, they don't get listed.",
   },
   {
-    q: "What areas do you cover?",
-    a: "RoofPitch matches homeowners with contractors across Canada. If we don't have a contractor in your immediate area, we'll connect you with the closest approved pros.",
+    q: "Which areas do you cover?",
+    a: "We work with roofing companies across Canada. If there's no one in your immediate area, we'll point you to the closest companies we've checked out.",
   },
   {
-    q: "Will my information be sold or spammed?",
-    a: "Never. Your details are only shared with the contractors you choose to request quotes from. We don't sell your data to third parties.",
+    q: "Will you sell my details or spam me?",
+    a: "No. We only pass your details to the companies you pick. We don't sell your phone number or email to anyone else.",
   },
   {
-    q: "How quickly will I hear back?",
-    a: "Most homeowners receive their first free quotes within 24 hours of getting matched.",
+    q: "How soon will I hear back?",
+    a: "Usually a day or two. Once you choose the companies you want to hear from, they reach out directly with a quote.",
   },
 ]
 
@@ -37,7 +37,7 @@ export function Faq() {
             FAQ
           </p>
           <h2 className="mt-3 font-heading text-4xl font-bold tracking-tight text-balance sm:text-5xl">
-            Questions, answered.
+            Questions homeowners ask us.
           </h2>
         </div>
 
