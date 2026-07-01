@@ -1,18 +1,45 @@
 /**
- * Data access for the measurement workflow.
+ * Data access for RoofPitch.
  *
- * These are interfaces plus in-memory implementations so the app runs locally
- * with no database. In Stage 3 we replace the in-memory classes with Aurora
- * Postgres-backed ones — the workflow keeps calling the same interfaces.
+ * Two interchangeable implementations behind the same interfaces:
+ *   - InMemory*  : no database, resets on restart. Great for local UI testing
+ *                  and the v0 preview.
+ *   - Db*        : Amazon Aurora PostgreSQL (or any Postgres via DATABASE_URL).
+ *
+ * Pick with DATA_DRIVER = "aurora" | "memory" (defaults to "memory" when no
+ * database is configured). The workflow and API routes only ever see the
+ * interfaces, so switching drivers changes nothing else.
  */
+
+import { query } from "@/lib/db"
+
+/* ------------------------------------------------------------------ */
+/* Types                                                               */
+/* ------------------------------------------------------------------ */
+
+export type ContractorStatus = "pending" | "approved" | "rejected"
 
 export interface Contractor {
   id: string
-  name: string
+  company: string
+  contactName: string
   email: string
-  postalPrefix: string // crude "area" key; real matching will geocode
+  phone?: string
+  serviceArea?: string
+  postalPrefix?: string
   specialties: string[]
-  approved: boolean
+  status: ContractorStatus
+  createdAt: string
+}
+
+export interface ContractorInput {
+  company: string
+  contactName: string
+  email: string
+  phone?: string
+  serviceArea?: string
+  postalPrefix?: string
+  specialties: string[]
 }
 
 export type RequestStatus =
@@ -31,51 +58,97 @@ export interface MeasurementRequest {
   homeownerEmail?: string
   status: RequestStatus
   jobId?: string
+  provider?: string
   contractorIds: string[]
   reportUrl?: string
   materialsUrl?: string
   createdAt: string
 }
 
+/* ------------------------------------------------------------------ */
+/* Interfaces                                                          */
+/* ------------------------------------------------------------------ */
+
 export interface ContractorRepository {
+  create(input: ContractorInput): Promise<Contractor>
+  listByStatus(status: ContractorStatus | "all"): Promise<Contractor[]>
+  getById(id: string): Promise<Contractor | undefined>
+  setStatus(id: string, status: ContractorStatus): Promise<Contractor>
   findNearest(postalCode: string, limit: number): Promise<Contractor[]>
   findByIds(ids: string[]): Promise<Contractor[]>
 }
 
 export interface MeasurementRequestRepository {
-  create(input: Omit<MeasurementRequest, "id" | "createdAt" | "status" | "contractorIds">): Promise<MeasurementRequest>
+  create(
+    input: Omit<MeasurementRequest, "id" | "createdAt" | "status" | "contractorIds">,
+  ): Promise<MeasurementRequest>
   update(id: string, patch: Partial<MeasurementRequest>): Promise<MeasurementRequest>
+  setMatches(id: string, contractorIds: string[]): Promise<void>
+  findById(id: string): Promise<MeasurementRequest | undefined>
   findByJobId(jobId: string): Promise<MeasurementRequest | undefined>
+  listRecent(limit: number): Promise<MeasurementRequest[]>
 }
 
-/* ------------------------------------------------------------------ */
-/* In-memory implementations                                           */
-/* ------------------------------------------------------------------ */
+function postalPrefixOf(postal: string): string {
+  return postal.trim().charAt(0).toUpperCase()
+}
 
-const sampleContractors: Contractor[] = [
-  { id: "c1", name: "Summit Roofing Co.", email: "leads@summitroofing.example", postalPrefix: "M", specialties: ["shingles", "metal"], approved: true },
-  { id: "c2", name: "Maple Leaf Exteriors", email: "quotes@mapleleaf.example", postalPrefix: "M", specialties: ["shingles", "flat"], approved: true },
-  { id: "c3", name: "Northern Peak Roofers", email: "hello@northernpeak.example", postalPrefix: "M", specialties: ["metal"], approved: true },
-  { id: "c4", name: "TrueLine Roofing", email: "office@trueline.example", postalPrefix: "L", specialties: ["shingles", "flat", "metal"], approved: true },
-  { id: "c5", name: "Cheap Fast Roofs", email: "n/a@example", postalPrefix: "M", specialties: ["shingles"], approved: false },
+/* ================================================================== */
+/* In-memory implementation                                            */
+/* ================================================================== */
+
+const seedContractors: Contractor[] = [
+  { id: "c1", company: "Summit Roofing Co.", contactName: "Dave Nguyen", email: "leads@summitroofing.example", phone: "416-555-0110", serviceArea: "Toronto & GTA", postalPrefix: "M", specialties: ["shingles", "metal"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c2", company: "Maple Leaf Exteriors", contactName: "Sarah Bianchi", email: "quotes@mapleleaf.example", phone: "416-555-0134", serviceArea: "Toronto core", postalPrefix: "M", specialties: ["shingles", "flat"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c3", company: "Northern Peak Roofers", contactName: "Tom Reyes", email: "hello@northernpeak.example", phone: "905-555-0177", serviceArea: "North York, Vaughan", postalPrefix: "M", specialties: ["metal"], status: "pending", createdAt: new Date().toISOString() },
+  { id: "c4", company: "TrueLine Roofing", contactName: "Priya Shah", email: "office@trueline.example", phone: "905-555-0199", serviceArea: "Mississauga, Oakville", postalPrefix: "L", specialties: ["shingles", "flat", "metal"], status: "pending", createdAt: new Date().toISOString() },
 ]
 
+const memContractors: Contractor[] = [...seedContractors]
+const memRequests = new Map<string, MeasurementRequest>()
+
 export class InMemoryContractorRepository implements ContractorRepository {
+  async create(input: ContractorInput): Promise<Contractor> {
+    const contractor: Contractor = {
+      id: `c_${Date.now()}`,
+      ...input,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    }
+    memContractors.unshift(contractor)
+    return contractor
+  }
+
+  async listByStatus(status: ContractorStatus | "all"): Promise<Contractor[]> {
+    const all = [...memContractors].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    return status === "all" ? all : all.filter((c) => c.status === status)
+  }
+
+  async getById(id: string): Promise<Contractor | undefined> {
+    return memContractors.find((c) => c.id === id)
+  }
+
+  async setStatus(id: string, status: ContractorStatus): Promise<Contractor> {
+    const c = memContractors.find((x) => x.id === id)
+    if (!c) throw new Error(`Contractor ${id} not found`)
+    c.status = status
+    return c
+  }
+
   async findNearest(postalCode: string, limit: number): Promise<Contractor[]> {
-    const prefix = postalCode.trim().charAt(0).toUpperCase()
-    const approved = sampleContractors.filter((c) => c.approved)
-    // Prefer same-area contractors, then widen to any approved contractor.
+    const prefix = postalPrefixOf(postalCode)
+    const approved = memContractors.filter((c) => c.status === "approved")
     const inArea = approved.filter((c) => c.postalPrefix === prefix)
-    const ranked = inArea.length ? [...inArea, ...approved.filter((c) => !inArea.includes(c))] : approved
+    const ranked = inArea.length
+      ? [...inArea, ...approved.filter((c) => !inArea.includes(c))]
+      : approved
     return ranked.slice(0, limit)
   }
 
   async findByIds(ids: string[]): Promise<Contractor[]> {
-    return sampleContractors.filter((c) => ids.includes(c.id))
+    return memContractors.filter((c) => ids.includes(c.id))
   }
 }
-
-const requests = new Map<string, MeasurementRequest>()
 
 export class InMemoryMeasurementRequestRepository implements MeasurementRequestRepository {
   async create(
@@ -88,20 +161,247 @@ export class InMemoryMeasurementRequestRepository implements MeasurementRequestR
       contractorIds: [],
       createdAt: new Date().toISOString(),
     }
-    requests.set(request.id, request)
+    memRequests.set(request.id, request)
     return request
   }
 
   async update(id: string, patch: Partial<MeasurementRequest>): Promise<MeasurementRequest> {
-    const existing = requests.get(id)
+    const existing = memRequests.get(id)
     if (!existing) throw new Error(`Request ${id} not found`)
     const updated = { ...existing, ...patch }
-    requests.set(id, updated)
+    memRequests.set(id, updated)
     return updated
   }
 
+  async setMatches(id: string, contractorIds: string[]): Promise<void> {
+    const existing = memRequests.get(id)
+    if (existing) existing.contractorIds = contractorIds
+  }
+
+  async findById(id: string): Promise<MeasurementRequest | undefined> {
+    return memRequests.get(id)
+  }
+
   async findByJobId(jobId: string): Promise<MeasurementRequest | undefined> {
-    return Array.from(requests.values()).find((r) => r.jobId === jobId)
+    return Array.from(memRequests.values()).find((r) => r.jobId === jobId)
+  }
+
+  async listRecent(limit: number): Promise<MeasurementRequest[]> {
+    return Array.from(memRequests.values())
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit)
+  }
+}
+
+/* ================================================================== */
+/* Aurora / Postgres implementation                                    */
+/* ================================================================== */
+
+interface ContractorRow {
+  id: string
+  company: string
+  contact_name: string
+  email: string
+  phone: string | null
+  service_area: string | null
+  postal_prefix: string | null
+  specialties: string[]
+  status: ContractorStatus
+  created_at: Date
+}
+
+function mapContractor(r: ContractorRow): Contractor {
+  return {
+    id: r.id,
+    company: r.company,
+    contactName: r.contact_name,
+    email: r.email,
+    phone: r.phone ?? undefined,
+    serviceArea: r.service_area ?? undefined,
+    postalPrefix: r.postal_prefix ?? undefined,
+    specialties: r.specialties ?? [],
+    status: r.status,
+    createdAt: r.created_at.toISOString(),
+  }
+}
+
+export class DbContractorRepository implements ContractorRepository {
+  async create(input: ContractorInput): Promise<Contractor> {
+    const { rows } = await query<ContractorRow>(
+      `INSERT INTO contractors (company, contact_name, email, phone, service_area, postal_prefix, specialties)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [
+        input.company,
+        input.contactName,
+        input.email,
+        input.phone ?? null,
+        input.serviceArea ?? null,
+        input.postalPrefix ?? null,
+        input.specialties,
+      ],
+    )
+    return mapContractor(rows[0])
+  }
+
+  async listByStatus(status: ContractorStatus | "all"): Promise<Contractor[]> {
+    const { rows } =
+      status === "all"
+        ? await query<ContractorRow>(`SELECT * FROM contractors ORDER BY created_at DESC`)
+        : await query<ContractorRow>(
+            `SELECT * FROM contractors WHERE status = $1 ORDER BY created_at DESC`,
+            [status],
+          )
+    return rows.map(mapContractor)
+  }
+
+  async getById(id: string): Promise<Contractor | undefined> {
+    const { rows } = await query<ContractorRow>(`SELECT * FROM contractors WHERE id = $1`, [id])
+    return rows[0] ? mapContractor(rows[0]) : undefined
+  }
+
+  async setStatus(id: string, status: ContractorStatus): Promise<Contractor> {
+    const { rows } = await query<ContractorRow>(
+      `UPDATE contractors SET status = $2, updated_at = now() WHERE id = $1 RETURNING *`,
+      [id, status],
+    )
+    if (!rows[0]) throw new Error(`Contractor ${id} not found`)
+    return mapContractor(rows[0])
+  }
+
+  async findNearest(postalCode: string, limit: number): Promise<Contractor[]> {
+    const prefix = postalPrefixOf(postalCode)
+    // Approved contractors in the same area first, then any approved company.
+    const { rows } = await query<ContractorRow>(
+      `SELECT * FROM contractors
+       WHERE status = 'approved'
+       ORDER BY (postal_prefix = $1) DESC, created_at DESC
+       LIMIT $2`,
+      [prefix, limit],
+    )
+    return rows.map(mapContractor)
+  }
+
+  async findByIds(ids: string[]): Promise<Contractor[]> {
+    if (ids.length === 0) return []
+    const { rows } = await query<ContractorRow>(
+      `SELECT * FROM contractors WHERE id = ANY($1::uuid[])`,
+      [ids],
+    )
+    return rows.map(mapContractor)
+  }
+}
+
+interface RequestRow {
+  id: string
+  address: string
+  postal_code: string
+  product: string
+  color: string | null
+  homeowner_email: string | null
+  status: RequestStatus
+  job_id: string | null
+  provider: string | null
+  report_url: string | null
+  materials_url: string | null
+  created_at: Date
+}
+
+async function mapRequest(r: RequestRow): Promise<MeasurementRequest> {
+  const { rows } = await query<{ contractor_id: string }>(
+    `SELECT contractor_id FROM request_contractors WHERE request_id = $1`,
+    [r.id],
+  )
+  return {
+    id: r.id,
+    address: r.address,
+    postalCode: r.postal_code,
+    product: r.product,
+    color: r.color ?? "",
+    homeownerEmail: r.homeowner_email ?? undefined,
+    status: r.status,
+    jobId: r.job_id ?? undefined,
+    provider: r.provider ?? undefined,
+    contractorIds: rows.map((x) => x.contractor_id),
+    reportUrl: r.report_url ?? undefined,
+    materialsUrl: r.materials_url ?? undefined,
+    createdAt: r.created_at.toISOString(),
+  }
+}
+
+export class DbMeasurementRequestRepository implements MeasurementRequestRepository {
+  async create(
+    input: Omit<MeasurementRequest, "id" | "createdAt" | "status" | "contractorIds">,
+  ): Promise<MeasurementRequest> {
+    const { rows } = await query<RequestRow>(
+      `INSERT INTO measurement_requests (address, postal_code, product, color, homeowner_email)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [input.address, input.postalCode, input.product, input.color, input.homeownerEmail ?? null],
+    )
+    return mapRequest(rows[0])
+  }
+
+  async update(id: string, patch: Partial<MeasurementRequest>): Promise<MeasurementRequest> {
+    const fields: string[] = []
+    const values: unknown[] = []
+    let i = 1
+    const col: Record<string, string> = {
+      status: "status",
+      jobId: "job_id",
+      provider: "provider",
+      reportUrl: "report_url",
+      materialsUrl: "materials_url",
+    }
+    for (const [key, dbCol] of Object.entries(col)) {
+      const v = (patch as Record<string, unknown>)[key]
+      if (v !== undefined) {
+        fields.push(`${dbCol} = $${i++}`)
+        values.push(v)
+      }
+    }
+    if (fields.length === 0) {
+      const current = await this.findById(id)
+      if (!current) throw new Error(`Request ${id} not found`)
+      return current
+    }
+    values.push(id)
+    const { rows } = await query<RequestRow>(
+      `UPDATE measurement_requests SET ${fields.join(", ")}, updated_at = now()
+       WHERE id = $${i} RETURNING *`,
+      values,
+    )
+    if (!rows[0]) throw new Error(`Request ${id} not found`)
+    return mapRequest(rows[0])
+  }
+
+  async setMatches(id: string, contractorIds: string[]): Promise<void> {
+    for (const cid of contractorIds) {
+      await query(
+        `INSERT INTO request_contractors (request_id, contractor_id)
+         VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [id, cid],
+      )
+    }
+  }
+
+  async findById(id: string): Promise<MeasurementRequest | undefined> {
+    const { rows } = await query<RequestRow>(`SELECT * FROM measurement_requests WHERE id = $1`, [id])
+    return rows[0] ? mapRequest(rows[0]) : undefined
+  }
+
+  async findByJobId(jobId: string): Promise<MeasurementRequest | undefined> {
+    const { rows } = await query<RequestRow>(
+      `SELECT * FROM measurement_requests WHERE job_id = $1`,
+      [jobId],
+    )
+    return rows[0] ? mapRequest(rows[0]) : undefined
+  }
+
+  async listRecent(limit: number): Promise<MeasurementRequest[]> {
+    const { rows } = await query<RequestRow>(
+      `SELECT * FROM measurement_requests ORDER BY created_at DESC LIMIT $1`,
+      [limit],
+    )
+    return Promise.all(rows.map(mapRequest))
   }
 }
 
@@ -109,10 +409,18 @@ export class InMemoryMeasurementRequestRepository implements MeasurementRequestR
 /* Factories                                                           */
 /* ------------------------------------------------------------------ */
 
+function useAurora(): boolean {
+  const driver = process.env.DATA_DRIVER
+  if (driver === "aurora" || driver === "db") return true
+  if (driver === "memory") return false
+  // Auto: use the database only if one is actually configured.
+  return Boolean(process.env.DATABASE_URL || process.env.PGHOST)
+}
+
 export function getContractorRepository(): ContractorRepository {
-  return new InMemoryContractorRepository()
+  return useAurora() ? new DbContractorRepository() : new InMemoryContractorRepository()
 }
 
 export function getMeasurementRequestRepository(): MeasurementRequestRepository {
-  return new InMemoryMeasurementRequestRepository()
+  return useAurora() ? new DbMeasurementRequestRepository() : new InMemoryMeasurementRequestRepository()
 }

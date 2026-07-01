@@ -45,13 +45,64 @@ export interface MeasurementProvider {
 export class EagleViewProvider implements MeasurementProvider {
   readonly name = "eagleview"
   private readonly baseUrl = process.env.EAGLEVIEW_API_BASE ?? "https://api.eagleview.com"
+  private readonly timeoutMs = Number(process.env.EAGLEVIEW_TIMEOUT_MS ?? 20000)
+  // Cache an OAuth token in memory so we don't re-authenticate on every call.
+  private token: { value: string; expiresAt: number } | null = null
 
-  private headers(): Record<string, string> {
-    const key = process.env.EAGLEVIEW_API_KEY
-    if (!key) {
-      throw new Error("EAGLEVIEW_API_KEY is not set. Add it to .env.local or switch MEASUREMENT_PROVIDER=mock.")
+  /**
+   * Returns an Authorization value. Two supported modes:
+   *   - Static API key:  EAGLEVIEW_API_KEY               -> Bearer <key>
+   *   - OAuth2 client credentials: EAGLEVIEW_CLIENT_ID + EAGLEVIEW_CLIENT_SECRET
+   *     -> exchanged for a short-lived bearer token, cached until it expires.
+   */
+  private async authorization(): Promise<string> {
+    const staticKey = process.env.EAGLEVIEW_API_KEY
+    if (staticKey) return `Bearer ${staticKey}`
+
+    const clientId = process.env.EAGLEVIEW_CLIENT_ID
+    const clientSecret = process.env.EAGLEVIEW_CLIENT_SECRET
+    if (!clientId || !clientSecret) {
+      throw new Error(
+        "EagleView is not configured. Set EAGLEVIEW_API_KEY, or EAGLEVIEW_CLIENT_ID + EAGLEVIEW_CLIENT_SECRET, or switch MEASUREMENT_PROVIDER=mock.",
+      )
     }
-    return { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }
+
+    if (this.token && this.token.expiresAt > Date.now() + 30_000) {
+      return `Bearer ${this.token.value}`
+    }
+
+    const tokenUrl = process.env.EAGLEVIEW_TOKEN_URL ?? `${this.baseUrl}/oauth2/token`
+    const res = await fetch(tokenUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: clientId,
+        client_secret: clientSecret,
+      }),
+    })
+    if (!res.ok) throw new Error(`EagleView token request failed (${res.status})`)
+    const data = (await res.json()) as { access_token: string; expires_in?: number }
+    this.token = {
+      value: data.access_token,
+      expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000,
+    }
+    return `Bearer ${this.token.value}`
+  }
+
+  private async headers(): Promise<Record<string, string>> {
+    return { Authorization: await this.authorization(), "Content-Type": "application/json" }
+  }
+
+  /** fetch with an abort-based timeout so a hung provider never blocks a request. */
+  private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs)
+    try {
+      return await fetch(url, { ...init, signal: controller.signal })
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   private mapStatus(raw: string): MeasurementStatus {

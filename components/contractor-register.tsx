@@ -27,14 +27,39 @@ const serviceTypes = ["Asphalt", "Metal", "Cedar shake", "Slate", "Flat / commer
 export function ContractorRegister() {
   const [submitted, setSubmitted] = useState(false)
   const [services, setServices] = useState<string[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
 
   function toggleService(s: string) {
     setServices((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]))
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    setSubmitted(true)
+    setLoading(true)
+    setError("")
+    const form = new FormData(e.currentTarget)
+    const area = String(form.get("area") ?? "")
+    const res = await fetch("/api/contractors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        company: form.get("business"),
+        contactName: form.get("contact"),
+        email: form.get("email"),
+        phone: form.get("phone"),
+        serviceArea: area,
+        postalCode: area,
+        specialties: services.map((s) => s.toLowerCase()),
+      }),
+    })
+    setLoading(false)
+    if (res.ok) {
+      setSubmitted(true)
+    } else {
+      const data = (await res.json().catch(() => ({}))) as { error?: string }
+      setError(data.error ?? "Something went wrong. Please try again.")
+    }
   }
 
   return (
@@ -116,11 +141,13 @@ export function ContractorRegister() {
                   </div>
                 </div>
 
+                {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
                 <Button
                   type="submit"
+                  disabled={loading}
                   className="mt-6 h-12 w-full bg-accent text-base text-accent-foreground hover:bg-accent/90"
                 >
-                  Submit application
+                  {loading ? "Submitting…" : "Submit application"}
                 </Button>
                 <p className="mt-3 text-center text-xs text-muted-foreground">
                   By applying you agree to RoofPitch&apos;s contractor terms.

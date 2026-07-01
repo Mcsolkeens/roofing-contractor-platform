@@ -62,11 +62,15 @@ export async function startMeasurementRequest(input: StartRequestInput): Promise
   // 3. Order the measurement (provider-agnostic).
   const job = await measurement.createJob(input.address)
 
-  // 4. Record what we started, then return right away.
+  // 4. Record what we started (job + matched contractors), then return.
+  await requestRepo.setMatches(
+    request.id,
+    contractors.map((c) => c.id),
+  )
   await requestRepo.update(request.id, {
     jobId: job.id,
+    provider: job.provider,
     status: "measurement_ordered",
-    contractorIds: contractors.map((c) => c.id),
   })
 
   return {
