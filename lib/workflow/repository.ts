@@ -87,6 +87,8 @@ export interface MeasurementRequestRepository {
   findById(id: string): Promise<MeasurementRequest | undefined>
   findByJobId(jobId: string): Promise<MeasurementRequest | undefined>
   listRecent(limit: number): Promise<MeasurementRequest[]>
+  /** Requests whose measurement was ordered but is not yet finished. */
+  listInProgress(): Promise<MeasurementRequest[]>
 }
 
 function postalPrefixOf(postal: string): string {
@@ -190,6 +192,12 @@ export class InMemoryMeasurementRequestRepository implements MeasurementRequestR
     return Array.from(memRequests.values())
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, limit)
+  }
+
+  async listInProgress(): Promise<MeasurementRequest[]> {
+    return Array.from(memRequests.values()).filter(
+      (r) => r.status === "measurement_ordered" && Boolean(r.jobId),
+    )
   }
 }
 
@@ -400,6 +408,15 @@ export class DbMeasurementRequestRepository implements MeasurementRequestReposit
     const { rows } = await query<RequestRow>(
       `SELECT * FROM measurement_requests ORDER BY created_at DESC LIMIT $1`,
       [limit],
+    )
+    return Promise.all(rows.map(mapRequest))
+  }
+
+  async listInProgress(): Promise<MeasurementRequest[]> {
+    const { rows } = await query<RequestRow>(
+      `SELECT * FROM measurement_requests
+       WHERE status = 'measurement_ordered' AND job_id IS NOT NULL
+       ORDER BY created_at ASC`,
     )
     return Promise.all(rows.map(mapRequest))
   }
