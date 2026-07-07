@@ -410,11 +410,15 @@ export class DbMeasurementRequestRepository implements MeasurementRequestReposit
 /* ------------------------------------------------------------------ */
 
 function useAurora(): boolean {
-  const driver = process.env.DATA_DRIVER
-  if (driver === "aurora" || driver === "db") return true
+  const driver = (process.env.DATA_DRIVER || "").toLowerCase()
+  if (driver === "aurora" || driver === "db" || driver === "postgres") return true
   if (driver === "memory") return false
-  // Auto: use the database only if one is actually configured.
-  return Boolean(process.env.DATABASE_URL || process.env.PGHOST)
+  // Auto mode: only talk to a database when an explicit connection string is set.
+  // We deliberately do NOT switch to Aurora just because PGHOST exists (the
+  // Aurora integration always injects PGHOST), because Aurora IAM auth cannot
+  // complete inside the v0 preview sandbox and would 500 every DB call. To use
+  // Aurora in the cloud, set DATA_DRIVER=aurora on the Vercel project.
+  return Boolean(process.env.DATABASE_URL)
 }
 
 export function getContractorRepository(): ContractorRepository {
