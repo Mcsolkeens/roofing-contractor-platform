@@ -44,7 +44,10 @@ export interface MeasurementProvider {
 
 export class EagleViewProvider implements MeasurementProvider {
   readonly name = "eagleview"
-  private readonly baseUrl = process.env.EAGLEVIEW_API_BASE ?? "https://api.eagleview.com"
+  // API host for placing/reading orders. Defaults to EagleView's documented host.
+  private readonly baseUrl = process.env.EAGLEVIEW_API_BASE ?? "https://apis.eagleview.com"
+  // OAuth token endpoint. Documented default is the API Center host.
+  private readonly tokenUrl = process.env.EAGLEVIEW_TOKEN_URL ?? "https://apicenter.eagleview.com/oauth2/v1/token"
   private readonly timeoutMs = Number(process.env.EAGLEVIEW_TIMEOUT_MS ?? 20000)
   // Cache an OAuth token in memory so we don't re-authenticate on every call.
   private token: { value: string; expiresAt: number } | null = null
@@ -54,6 +57,11 @@ export class EagleViewProvider implements MeasurementProvider {
    *   - Static API key:  EAGLEVIEW_API_KEY               -> Bearer <key>
    *   - OAuth2 client credentials: EAGLEVIEW_CLIENT_ID + EAGLEVIEW_CLIENT_SECRET
    *     -> exchanged for a short-lived bearer token, cached until it expires.
+   *
+   * The client-credentials call follows EagleView's documented flow exactly:
+   * POST to the token endpoint with HTTP Basic auth (base64(id:secret)) and
+   * `grant_type=client_credentials` as a urlencoded body. No scope is sent.
+   * See https://developer.eagleview.com/documentation/authentication-methods/v1/client-credentials
    */
   private async authorization(): Promise<string> {
     const staticKey = process.env.EAGLEVIEW_API_KEY
@@ -71,17 +79,21 @@ export class EagleViewProvider implements MeasurementProvider {
       return `Bearer ${this.token.value}`
     }
 
-    const tokenUrl = process.env.EAGLEVIEW_TOKEN_URL ?? `${this.baseUrl}/oauth2/token`
-    const res = await fetch(tokenUrl, {
+    const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64")
+    const res = await this.fetchWithTimeout(this.tokenUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "client_credentials",
-        client_id: clientId,
-        client_secret: clientSecret,
-      }),
+      headers: {
+        Authorization: `Basic ${basic}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ grant_type: "client_credentials" }),
     })
-    if (!res.ok) throw new Error(`EagleView token request failed (${res.status})`)
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "")
+      throw new Error(
+        `EagleView token request failed (${res.status}). ${detail.slice(0, 300)}`,
+      )
+    }
     const data = (await res.json()) as { access_token: string; expires_in?: number }
     this.token = {
       value: data.access_token,
