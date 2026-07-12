@@ -30,12 +30,34 @@ export interface ReportFile {
   base64: string
 }
 
+/** Structured address parts (EagleView needs these split out). */
+export interface EagleViewAddress {
+  address: string
+  city: string
+  state: string
+  zip: string
+  country?: string
+  latitude?: number | null
+  longitude?: number | null
+}
+
 export interface MeasurementProvider {
   readonly name: string
-  createJob(address: string): Promise<MeasurementJob>
+  createJob(address: string, structured?: EagleViewAddress): Promise<MeasurementJob>
   getStatus(jobId: string): Promise<MeasurementJobStatus>
   downloadReport(jobId: string): Promise<ReportFile>
   downloadMaterials(jobId: string): Promise<ReportFile>
+}
+
+/** Best-effort parse of "123 Main St, City, ST 12345" into EagleView parts. */
+function parseAddress(raw: string): EagleViewAddress {
+  const parts = raw.split(",").map((p) => p.trim()).filter(Boolean)
+  const address = parts[0] ?? raw
+  const city = parts[1] ?? ""
+  const stateZip = (parts[2] ?? "").split(/\s+/).filter(Boolean)
+  const state = stateZip[0] ?? ""
+  const zip = stateZip[1] ?? ""
+  return { address, city, state, zip, country: "US" }
 }
 
 /* ------------------------------------------------------------------ */
@@ -117,68 +139,156 @@ export class EagleViewProvider implements MeasurementProvider {
     }
   }
 
-  private mapStatus(raw: string): MeasurementStatus {
-    switch ((raw || "").toLowerCase()) {
-      case "complete":
-      case "completed":
-      case "ready":
-        return "ready"
-      case "processing":
-      case "in_progress":
-        return "in_progress"
-      case "failed":
-      case "error":
-        return "failed"
-      default:
-        return "pending"
-    }
+  // EagleView returns numeric status codes on a report. These map onto our
+  // simplified lifecycle. (3 = complete/available in the Measurement Orders API.)
+  private mapStatus(raw: unknown): MeasurementStatus {
+    const s = String(raw ?? "").toLowerCase()
+    if (["3", "complete", "completed", "ready", "available", "delivered"].includes(s)) return "ready"
+    if (["1", "2", "processing", "in_progress", "inprocess", "pending"].includes(s)) return "in_progress"
+    if (["failed", "error", "cancelled", "canceled", "rejected"].includes(s)) return "failed"
+    return "pending"
   }
 
-  async createJob(address: string): Promise<MeasurementJob> {
-    const res = await this.fetchWithTimeout(`${this.baseUrl}/v2/measurement-orders`, {
+  /**
+   * Place a measurement order. Maps to EagleView `POST /v2/Order/PlaceOrder`.
+   * The returned report id is used as our job id for status + file retrieval.
+   *
+   * Note: in the sandbox, PlaceOrder only succeeds for EagleView's pre-loaded
+   * addresses. `structured` lets callers pass the exact address parts; otherwise
+   * we do a best-effort parse of a single-line address string.
+   */
+  async createJob(address: string, structured?: EagleViewAddress): Promise<MeasurementJob> {
+    const addr = structured ?? parseAddress(address)
+    const productId = Number(process.env.EAGLEVIEW_PRODUCT_ID ?? 106) // 106 = roof report
+    const deliveryProductId = Number(process.env.EAGLEVIEW_DELIVERY_PRODUCT_ID ?? 8)
+
+    const body = {
+      OrderReports: [
+        {
+          ReportAddresses: [
+            {
+              Address: addr.address,
+              City: addr.city,
+              State: addr.state,
+              Zip: addr.zip,
+              Country: addr.country ?? "US",
+              Latitude: addr.latitude ?? null,
+              Longitude: addr.longitude ?? null,
+              AddressType: 1,
+            },
+          ],
+          PrimaryProductId: productId,
+          DeliveryProductId: deliveryProductId,
+          MeasurementInstructionType: 3,
+          ChangesInLast4Years: false,
+        },
+      ],
+    }
+
+    const res = await this.fetchWithTimeout(`${this.baseUrl}/v2/Order/PlaceOrder`, {
       method: "POST",
       headers: await this.headers(),
-      body: JSON.stringify({ address, productType: "residential-roof" }),
+      body: JSON.stringify(body),
     })
-    if (!res.ok) throw new Error(`EagleView createJob failed (${res.status})`)
-    const data = (await res.json()) as { orderId: string | number; status?: string }
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "")
+      throw new Error(`EagleView PlaceOrder failed (${res.status}). ${detail.slice(0, 300)}`)
+    }
+    const data = (await res.json()) as Record<string, unknown>
+    // The report id location varies; probe the common shapes.
+    const reportId =
+      (data.reportId as string | number | undefined) ??
+      (data.ReportId as string | number | undefined) ??
+      ((data.reports as Array<{ reportId?: string | number }> | undefined)?.[0]?.reportId) ??
+      ((data.OrderReports as Array<{ ReportId?: string | number }> | undefined)?.[0]?.ReportId)
+
     return {
-      id: String(data.orderId),
+      id: String(reportId ?? ""),
       provider: this.name,
-      status: this.mapStatus(data.status ?? "pending"),
+      status: "in_progress",
       address,
       createdAt: new Date().toISOString(),
     }
   }
 
+  /** Report status. Maps to EagleView `GET /v3/Report/GetReport?reportId=`. */
   async getStatus(jobId: string): Promise<MeasurementJobStatus> {
-    const res = await this.fetchWithTimeout(`${this.baseUrl}/v2/measurement-orders/${jobId}`, {
+    const res = await this.fetchWithTimeout(
+      `${this.baseUrl}/v3/Report/GetReport?reportId=${encodeURIComponent(jobId)}`,
+      { headers: await this.headers() },
+    )
+    if (!res.ok) throw new Error(`EagleView GetReport failed (${res.status})`)
+    const data = (await res.json()) as Record<string, unknown>
+    const statusRaw =
+      data.status ?? data.Status ?? data.reportStatus ?? data.ReportStatus ?? data.statusId ?? data.StatusId
+    return { id: jobId, status: this.mapStatus(statusRaw) }
+  }
+
+  /**
+   * Download a report file. Maps to EagleView
+   * `GET /v1/File/GetReportFile?fileFormat=&fileType=&reportId=`.
+   * The response may be raw bytes or a JSON envelope containing a URL — we
+   * handle both.
+   */
+  private async download(jobId: string, fileFormat: number, fileType: number, filename: string): Promise<ReportFile> {
+    const url = `${this.baseUrl}/v1/File/GetReportFile?fileFormat=${fileFormat}&fileType=${fileType}&reportId=${encodeURIComponent(jobId)}`
+    const res = await this.fetchWithTimeout(url, { headers: await this.headers() })
+    if (!res.ok) throw new Error(`EagleView GetReportFile failed (${res.status})`)
+
+    const contentType = res.headers.get("content-type") ?? "application/octet-stream"
+    // If EagleView hands back a JSON envelope with a download URL, follow it.
+    if (contentType.includes("application/json")) {
+      const j = (await res.json()) as Record<string, unknown>
+      const fileUrl = (j.url ?? j.Url ?? j.fileUrl ?? j.FileUrl ?? j.downloadUrl) as string | undefined
+      const b64 = (j.fileContents ?? j.FileContents ?? j.data) as string | undefined
+      if (b64) return { filename, contentType: "application/pdf", base64: b64 }
+      if (fileUrl) {
+        const f = await this.fetchWithTimeout(fileUrl, {})
+        const buf = Buffer.from(await f.arrayBuffer())
+        return { filename, contentType: f.headers.get("content-type") ?? "application/pdf", base64: buf.toString("base64") }
+      }
+      throw new Error("EagleView GetReportFile returned JSON without a file URL or contents")
+    }
+
+    const buf = Buffer.from(await res.arrayBuffer())
+    return { filename, contentType, base64: buf.toString("base64") }
+  }
+
+  // Roof 3D PDF (fileFormat=2, fileType=199) — the human-readable roof report.
+  downloadReport(jobId: string) {
+    return this.download(jobId, 2, 199, `roof-report-${jobId}.pdf`)
+  }
+  // EV Measurement JSON (fileFormat=18, fileType=107) — structured measurements.
+  downloadMaterials(jobId: string) {
+    return this.download(jobId, 18, 107, `measurements-${jobId}.json`)
+  }
+
+  /* ---- Diagnostic helpers (used by the sandbox demo page) ---- */
+
+  /** Confirms auth works by acquiring a token; returns its remaining lifetime. */
+  async verifyAuth(): Promise<{ ok: true; expiresInSec: number }> {
+    await this.authorization()
+    const expiresInSec = this.token ? Math.max(0, Math.round((this.token.expiresAt - Date.now()) / 1000)) : 0
+    return { ok: true, expiresInSec }
+  }
+
+  /** GET /v2/Product/GetAvailableProducts — proves an authorized data call. */
+  async getAvailableProducts(): Promise<unknown> {
+    const res = await this.fetchWithTimeout(`${this.baseUrl}/v2/Product/GetAvailableProducts`, {
       headers: await this.headers(),
     })
-    if (!res.ok) throw new Error(`EagleView getStatus failed (${res.status})`)
-    const data = (await res.json()) as { status?: string; message?: string }
-    return { id: jobId, status: this.mapStatus(data.status ?? "pending"), message: data.message }
+    if (!res.ok) throw new Error(`EagleView GetAvailableProducts failed (${res.status})`)
+    return res.json()
   }
 
-  private async download(jobId: string, kind: "report" | "materials"): Promise<ReportFile> {
-    const path = kind === "report" ? "report" : "materials-list"
-    const res = await this.fetchWithTimeout(`${this.baseUrl}/v2/measurement-orders/${jobId}/${path}`, {
-      headers: { ...(await this.headers()), Accept: "application/pdf" },
-    })
-    if (!res.ok) throw new Error(`EagleView download ${kind} failed (${res.status})`)
-    const buf = Buffer.from(await res.arrayBuffer())
-    return {
-      filename: kind === "report" ? `roof-measurement-${jobId}.pdf` : `materials-list-${jobId}.pdf`,
-      contentType: "application/pdf",
-      base64: buf.toString("base64"),
-    }
-  }
-
-  downloadReport(jobId: string) {
-    return this.download(jobId, "report")
-  }
-  downloadMaterials(jobId: string) {
-    return this.download(jobId, "materials")
+  /** Full GetReport payload for a report id (richer than getStatus). */
+  async getReportDetails(reportId: string): Promise<unknown> {
+    const res = await this.fetchWithTimeout(
+      `${this.baseUrl}/v3/Report/GetReport?reportId=${encodeURIComponent(reportId)}`,
+      { headers: await this.headers() },
+    )
+    if (!res.ok) throw new Error(`EagleView GetReport failed (${res.status})`)
+    return res.json()
   }
 }
 
