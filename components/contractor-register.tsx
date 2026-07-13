@@ -40,6 +40,7 @@ export function ContractorRegister() {
     setError("")
     const form = new FormData(e.currentTarget)
     const area = String(form.get("area") ?? "")
+    const postalCode = String(form.get("postalCode") ?? "")
     const res = await fetch("/api/contractors", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -49,7 +50,7 @@ export function ContractorRegister() {
         email: form.get("email"),
         phone: form.get("phone"),
         serviceArea: area,
-        postalCode: area,
+        postalCode,
         specialties: services.map((s) => s.toLowerCase()),
       }),
     })
@@ -111,11 +112,17 @@ export function ContractorRegister() {
                     <Field label="Email" id="email" type="email" placeholder="you@company.com" />
                     <Field label="Phone" id="phone" type="tel" placeholder="(555) 123-4567" />
                   </div>
-                  <Field
-                    label="Service area (postal / city)"
-                    id="area"
-                    placeholder="Toronto, ON"
-                  />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="Service area (city/region)" id="area" placeholder="Greater Sudbury, ON" />
+                    <Field
+                      label="Primary postal code"
+                      id="postalCode"
+                      placeholder="P3A 1B2"
+                    />
+                  </div>
+                  <p className="-mt-2 text-xs text-muted-foreground">
+                    We use your postal code to match you with homeowners in your area.
+                  </p>
 
                   <div>
                     <span className="mb-2 block text-sm font-medium">Services offered</span>

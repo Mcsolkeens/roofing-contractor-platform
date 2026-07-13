@@ -3,6 +3,7 @@
 import { useState } from "react"
 import {
   ArrowLeft,
+  ArrowLeftRight,
   ArrowRight,
   Check,
   MapPin,
@@ -340,59 +341,77 @@ export function HomeownerQuiz() {
                     </p>
 
                     {contractors.length > 0 && (
-                      <div className="mt-6 grid gap-3">
-                        {contractors.map((c) => {
-                          const selected = selectedIds.includes(c.id)
-                          return (
-                            <button
-                              key={c.id}
-                              type="button"
-                              onClick={() => toggleSelected(c.id)}
-                              aria-pressed={selected}
-                              className={`flex items-start justify-between gap-3 rounded-xl border p-4 text-left transition-all ${
-                                selected
-                                  ? "border-primary bg-primary/5 ring-2 ring-primary/30"
-                                  : "border-border hover:border-foreground/30"
-                              }`}
-                            >
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <ShieldCheck className="h-4 w-4 shrink-0 text-accent" />
-                                  <h4 className="truncate font-heading text-base font-bold">
-                                    {c.company}
-                                  </h4>
-                                </div>
-                                {c.serviceArea && (
-                                  <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
-                                    <MapPin className="h-3.5 w-3.5" />
-                                    {c.serviceArea}
-                                  </p>
-                                )}
-                                {c.specialties.length > 0 && (
-                                  <div className="mt-2 flex flex-wrap gap-1.5">
-                                    {c.specialties.map((s) => (
-                                      <span
-                                        key={s}
-                                        className="rounded-md bg-muted px-2 py-0.5 text-xs capitalize text-muted-foreground"
-                                      >
-                                        {s}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                              <span
-                                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                      <div className="mt-6">
+                        {contractors.length > 1 && (
+                          <p className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <ArrowLeftRight className="h-3.5 w-3.5" />
+                            Swipe to browse all {contractors.length}
+                          </p>
+                        )}
+                        <div
+                          className="-mx-6 flex snap-x snap-mandatory gap-3 overflow-x-auto px-6 pb-3 sm:-mx-8 sm:px-8"
+                          role="listbox"
+                          aria-label="Roofing companies near you"
+                        >
+                          {contractors.map((c) => {
+                            const selected = selectedIds.includes(c.id)
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => toggleSelected(c.id)}
+                                role="option"
+                                aria-selected={selected}
+                                className={`flex shrink-0 basis-[82%] snap-start flex-col justify-between rounded-xl border p-4 text-left transition-all sm:basis-[60%] ${
                                   selected
-                                    ? "border-primary bg-primary text-primary-foreground"
-                                    : "border-border"
+                                    ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+                                    : "border-border hover:border-foreground/30"
                                 }`}
                               >
-                                {selected && <Check className="h-3 w-3" />}
-                              </span>
-                            </button>
-                          )
-                        })}
+                                <div className="min-w-0">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                      <ShieldCheck className="h-4 w-4 shrink-0 text-accent" />
+                                      <h4 className="truncate font-heading text-base font-bold">
+                                        {c.company}
+                                      </h4>
+                                    </div>
+                                    <span
+                                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                                        selected
+                                          ? "border-primary bg-primary text-primary-foreground"
+                                          : "border-border"
+                                      }`}
+                                    >
+                                      {selected && <Check className="h-3 w-3" />}
+                                    </span>
+                                  </div>
+                                  {c.serviceArea && (
+                                    <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
+                                      <MapPin className="h-3.5 w-3.5" />
+                                      {c.serviceArea}
+                                    </p>
+                                  )}
+                                  {c.specialties.length > 0 && (
+                                    <div className="mt-3 flex flex-wrap gap-1.5">
+                                      {c.specialties.map((s) => (
+                                        <span
+                                          key={s}
+                                          className="rounded-md bg-muted px-2 py-0.5 text-xs capitalize text-muted-foreground"
+                                        >
+                                          {s}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                                <span className="mt-4 text-xs font-medium text-muted-foreground">
+                                  {selected ? "Selected — tap to remove" : "Tap to select"}
+                                </span>
+                              </button>
+                            )
+                          })}
+                        </div>
                       </div>
                     )}
 

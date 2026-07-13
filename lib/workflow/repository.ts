@@ -91,8 +91,21 @@ export interface MeasurementRequestRepository {
   listInProgress(): Promise<MeasurementRequest[]>
 }
 
-function postalPrefixOf(postal: string): string {
-  return postal.trim().charAt(0).toUpperCase()
+/**
+ * Normalized Forward Sortation Area — the first 3 chars of a Canadian postal
+ * code (e.g. "P3E 2C6" -> "P3E"). The FSA identifies a specific geographic area.
+ */
+export function normalizeFsa(postal: string): string {
+  return postal.replace(/\s+/g, "").toUpperCase().slice(0, 3)
+}
+
+/**
+ * Metro/city "area key" = the letter+digit portion of the FSA (e.g. "P3" =
+ * Greater Sudbury, "M5" = downtown Toronto). This is the granularity we match
+ * on: precise enough to separate cities, broad enough to cover a whole metro.
+ */
+function areaKey(postal: string): string {
+  return normalizeFsa(postal).slice(0, 2)
 }
 
 /* ================================================================== */
@@ -100,10 +113,10 @@ function postalPrefixOf(postal: string): string {
 /* ================================================================== */
 
 const seedContractors: Contractor[] = [
-  { id: "c1", company: "Summit Roofing Co.", contactName: "Dave Nguyen", email: "leads@summitroofing.example", phone: "416-555-0110", serviceArea: "Toronto & GTA", postalPrefix: "M", specialties: ["shingles", "metal"], status: "approved", createdAt: new Date().toISOString() },
-  { id: "c2", company: "Maple Leaf Exteriors", contactName: "Sarah Bianchi", email: "quotes@mapleleaf.example", phone: "416-555-0134", serviceArea: "Toronto core", postalPrefix: "M", specialties: ["shingles", "flat"], status: "approved", createdAt: new Date().toISOString() },
-  { id: "c3", company: "Northern Peak Roofers", contactName: "Tom Reyes", email: "hello@northernpeak.example", phone: "905-555-0177", serviceArea: "North York, Vaughan", postalPrefix: "M", specialties: ["metal"], status: "pending", createdAt: new Date().toISOString() },
-  { id: "c4", company: "TrueLine Roofing", contactName: "Priya Shah", email: "office@trueline.example", phone: "905-555-0199", serviceArea: "Mississauga, Oakville", postalPrefix: "L", specialties: ["shingles", "flat", "metal"], status: "pending", createdAt: new Date().toISOString() },
+  { id: "c1", company: "Summit Roofing Co.", contactName: "Dave Nguyen", email: "leads@summitroofing.example", phone: "416-555-0110", serviceArea: "Downtown Toronto", postalPrefix: "M5V", specialties: ["shingles", "metal"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c2", company: "Maple Leaf Exteriors", contactName: "Sarah Bianchi", email: "quotes@mapleleaf.example", phone: "416-555-0134", serviceArea: "Downtown Toronto", postalPrefix: "M5H", specialties: ["shingles", "flat"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c3", company: "Northern Peak Roofers", contactName: "Tom Reyes", email: "hello@northernpeak.example", phone: "705-555-0177", serviceArea: "Greater Sudbury", postalPrefix: "P3A", specialties: ["metal"], status: "pending", createdAt: new Date().toISOString() },
+  { id: "c4", company: "TrueLine Roofing", contactName: "Priya Shah", email: "office@trueline.example", phone: "905-555-0199", serviceArea: "Mississauga, Oakville", postalPrefix: "L5B", specialties: ["shingles", "flat", "metal"], status: "pending", createdAt: new Date().toISOString() },
 ]
 
 const memContractors: Contractor[] = [...seedContractors]
@@ -138,13 +151,20 @@ export class InMemoryContractorRepository implements ContractorRepository {
   }
 
   async findNearest(postalCode: string, limit: number): Promise<Contractor[]> {
-    const prefix = postalPrefixOf(postalCode)
+    const area = areaKey(postalCode)
+    const fsa = normalizeFsa(postalCode)
+    if (area.length < 2) return []
     const approved = memContractors.filter((c) => c.status === "approved")
-    const inArea = approved.filter((c) => c.postalPrefix === prefix)
-    const ranked = inArea.length
-      ? [...inArea, ...approved.filter((c) => !inArea.includes(c))]
-      : approved
-    return ranked.slice(0, limit)
+    // Only contractors serving the same metro area. No broad fallback: an area
+    // with no approved company returns nothing (the UI shows "none yet").
+    const inArea = approved.filter((c) => areaKey(c.postalPrefix ?? "") === area)
+    // Exact FSA matches rank first, then the rest of the metro area.
+    inArea.sort((a, b) => {
+      const aExact = normalizeFsa(a.postalPrefix ?? "") === fsa ? 0 : 1
+      const bExact = normalizeFsa(b.postalPrefix ?? "") === fsa ? 0 : 1
+      return aExact - bExact
+    })
+    return inArea.slice(0, limit)
   }
 
   async findByIds(ids: string[]): Promise<Contractor[]> {
@@ -277,14 +297,19 @@ export class DbContractorRepository implements ContractorRepository {
   }
 
   async findNearest(postalCode: string, limit: number): Promise<Contractor[]> {
-    const prefix = postalPrefixOf(postalCode)
-    // Approved contractors in the same area first, then any approved company.
+    const area = areaKey(postalCode) // e.g. "P3"
+    const fsa = normalizeFsa(postalCode) // e.g. "P3E"
+    if (area.length < 2) return []
+    // Only approved contractors whose service area (FSA) is in the same metro
+    // area (letter+digit). No broad fallback — an unserved area returns none.
+    // Exact FSA matches are ranked first.
     const { rows } = await query<ContractorRow>(
       `SELECT * FROM contractors
        WHERE status = 'approved'
-       ORDER BY (postal_prefix = $1) DESC, created_at DESC
-       LIMIT $2`,
-      [prefix, limit],
+         AND UPPER(LEFT(postal_prefix, 2)) = $1
+       ORDER BY (UPPER(LEFT(postal_prefix, 3)) = $2) DESC, created_at DESC
+       LIMIT $3`,
+      [area, fsa, limit],
     )
     return rows.map(mapContractor)
   }
