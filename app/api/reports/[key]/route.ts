@@ -1,12 +1,20 @@
-import { readMemoryObject } from "@/lib/providers/storage"
+import { readMemoryObject, readDbObject } from "@/lib/providers/storage"
 
 export const runtime = "nodejs"
 
-/** Serves PDFs held by the in-memory storage provider during local development. */
+/** Serves stored report/materials PDFs (memory store in dev, database in prod). */
 export async function GET(_request: Request, { params }: { params: Promise<{ key: string }> }) {
   const { key } = await params
   const decoded = decodeURIComponent(key)
-  const object = readMemoryObject(decoded)
+  // Try the in-process store first (dev / same-invocation), then the database.
+  let object = readMemoryObject(decoded)
+  if (!object) {
+    try {
+      object = await readDbObject(decoded)
+    } catch (err) {
+      console.log("[v0] [api/reports] db read failed:", (err as Error).message)
+    }
+  }
   if (!object) {
     return new Response("Not found", { status: 404 })
   }

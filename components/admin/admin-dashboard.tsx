@@ -4,8 +4,9 @@ import { useState } from "react"
 import useSWR from "swr"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Check, X, Clock, LogOut, MapPin, Mail, Phone } from "lucide-react"
+import { Check, X, Clock, LogOut, MapPin, Mail, Phone, FileText, Send, Paperclip } from "lucide-react"
 import type { Contractor, ContractorStatus, MeasurementRequest } from "@/lib/workflow/repository"
+import type { SentEmail } from "@/lib/providers/email"
 
 type Filter = ContractorStatus | "all"
 
@@ -30,7 +31,8 @@ export function AdminDashboard() {
   const { data, isLoading, mutate } = useSWR<{
     contractors: Contractor[]
     requests: MeasurementRequest[]
-  }>(`/api/admin/contractors?status=${filter}`, fetcher)
+    emails: SentEmail[]
+  }>(`/api/admin/contractors?status=${filter}`, fetcher, { refreshInterval: 5000 })
 
   const [busyId, setBusyId] = useState<string | null>(null)
 
@@ -52,6 +54,7 @@ export function AdminDashboard() {
 
   const contractors = data?.contractors ?? []
   const requests = data?.requests ?? []
+  const emails = data?.emails ?? []
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
@@ -185,12 +188,13 @@ export function AdminDashboard() {
               <th className="px-4 py-3 font-medium">Product</th>
               <th className="px-4 py-3 font-medium">Matched</th>
               <th className="px-4 py-3 font-medium">Status</th>
+              <th className="px-4 py-3 font-medium">Report</th>
             </tr>
           </thead>
           <tbody>
             {requests.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
                   No requests yet. Submit one from the homepage to see it here.
                 </td>
               </tr>
@@ -205,10 +209,80 @@ export function AdminDashboard() {
                     {r.status.replace(/_/g, " ")}
                   </span>
                 </td>
+                <td className="px-4 py-3">
+                  {r.reportUrl ? (
+                    <div className="flex items-center gap-3">
+                      <a
+                        href={r.reportUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-primary hover:underline"
+                      >
+                        <FileText className="h-4 w-4" /> Report
+                      </a>
+                      {r.materialsUrl && (
+                        <a
+                          href={r.materialsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-primary hover:underline"
+                        >
+                          <FileText className="h-4 w-4" /> Materials
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Sent notifications */}
+      <h2 className="mt-12 font-heading text-2xl font-bold tracking-tight">Contractor notifications</h2>
+      <p className="mt-1 text-muted-foreground">
+        Lead emails sent to matched contractors, newest first.{" "}
+        {emails.length === 0
+          ? ""
+          : emails[0].provider === "console"
+            ? "Running in simulation mode — add RESEND_API_KEY to send real email."
+            : "Delivering via Resend."}
+      </p>
+      <div className="mt-4 grid gap-3">
+        {emails.length === 0 && (
+          <div className="rounded-xl border border-dashed border-border bg-card p-10 text-center text-muted-foreground">
+            No notifications sent yet.
+          </div>
+        )}
+        {emails.map((m) => (
+          <div key={m.id} className="rounded-xl border border-border bg-card p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 font-medium">
+                <Send className="h-4 w-4 text-primary" />
+                {m.subject}
+              </div>
+              <span
+                className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                  m.delivered ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"
+                }`}
+              >
+                {m.delivered ? "sent" : "failed"}
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              To: {m.to.join(", ")} · {new Date(m.sentAt).toLocaleString("en-CA")}
+            </p>
+            {m.attachments.length > 0 && (
+              <p className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <Paperclip className="h-3.5 w-3.5" /> {m.attachments.join(", ")}
+              </p>
+            )}
+            {m.note && <p className="mt-1 text-xs text-muted-foreground">{m.note}</p>}
+          </div>
+        ))}
       </div>
     </div>
   )

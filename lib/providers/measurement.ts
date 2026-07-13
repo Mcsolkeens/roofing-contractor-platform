@@ -7,6 +7,8 @@
  * and wire it into the factory at the bottom of this file — nothing else changes.
  */
 
+import { generateReportPdf, generateMaterialsPdf } from "@/lib/mock-report"
+
 export type MeasurementStatus = "pending" | "in_progress" | "ready" | "failed"
 
 export interface MeasurementJob {
@@ -296,21 +298,21 @@ export class EagleViewProvider implements MeasurementProvider {
 /* Mock — local development provider (no API key needed)               */
 /* ------------------------------------------------------------------ */
 
-function placeholderPdf(title: string): ReportFile {
-  const body = `%PDF-1.1 placeholder — ${title} generated locally by the mock provider`
-  return {
-    filename: `${title.toLowerCase().replace(/\s+/g, "-")}.pdf`,
-    contentType: "application/pdf",
-    base64: Buffer.from(body).toString("base64"),
-  }
-}
+/**
+ * Remembers the address behind each mock job so the generated PDFs are
+ * consistent for that property. Module-level, which is fine for the mock: it
+ * lives as long as the server process (same lifetime as the in-memory repo).
+ */
+const mockJobs = new Map<string, { address: string; postalCode: string; product?: string; color?: string }>()
 
 export class MockMeasurementProvider implements MeasurementProvider {
   readonly name = "mock"
 
-  async createJob(address: string): Promise<MeasurementJob> {
+  async createJob(address: string, structured?: EagleViewAddress): Promise<MeasurementJob> {
+    const id = `mock_${Date.now()}_${Math.floor(Math.random() * 1e4)}`
+    mockJobs.set(id, { address, postalCode: structured?.zip ?? "" })
     return {
-      id: `mock_${Date.now()}`,
+      id,
       provider: this.name,
       status: "in_progress",
       address,
@@ -323,11 +325,49 @@ export class MockMeasurementProvider implements MeasurementProvider {
     return { id: jobId, status: "ready" }
   }
 
-  async downloadReport(): Promise<ReportFile> {
-    return placeholderPdf("Roof Measurement Report")
+  private meta(jobId: string) {
+    const m = mockJobs.get(jobId)
+    return {
+      reportId: jobId,
+      address: m?.address ?? "123 Demo Street, Toronto, ON",
+      postalCode: m?.postalCode ?? "",
+      product: m?.product,
+      color: m?.color,
+    }
   }
-  async downloadMaterials(): Promise<ReportFile> {
-    return placeholderPdf("Materials List")
+
+  async downloadReport(jobId: string): Promise<ReportFile> {
+    const bytes = await generateReportPdf(this.meta(jobId))
+    return {
+      filename: `roof-report-${jobId}.pdf`,
+      contentType: "application/pdf",
+      base64: Buffer.from(bytes).toString("base64"),
+    }
+  }
+
+  async downloadMaterials(jobId: string): Promise<ReportFile> {
+    const bytes = await generateMaterialsPdf(this.meta(jobId))
+    return {
+      filename: `materials-list-${jobId}.pdf`,
+      contentType: "application/pdf",
+      base64: Buffer.from(bytes).toString("base64"),
+    }
+  }
+}
+
+/** Lets the workflow enrich a mock job with property details for nicer PDFs. */
+export function annotateMockJob(
+  jobId: string,
+  details: { address?: string; postalCode?: string; product?: string; color?: string },
+) {
+  const existing = mockJobs.get(jobId)
+  if (existing) {
+    mockJobs.set(jobId, {
+      address: details.address ?? existing.address,
+      postalCode: details.postalCode ?? existing.postalCode,
+      product: details.product ?? existing.product,
+      color: details.color ?? existing.color,
+    })
   }
 }
 

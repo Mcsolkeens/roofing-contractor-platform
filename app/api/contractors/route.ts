@@ -1,6 +1,33 @@
 import { NextResponse } from "next/server"
 import { getContractorRepository, type ContractorInput } from "@/lib/workflow/repository"
 
+export const runtime = "nodejs"
+
+/**
+ * Public endpoint: list approved contractors near a postal code.
+ * Used by the homeowner quiz to show real, admin-approved companies.
+ */
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url)
+  const postalCode = searchParams.get("postalCode") ?? ""
+  const limit = Number(searchParams.get("limit") ?? 6)
+
+  const repo = getContractorRepository()
+  const contractors = postalCode
+    ? await repo.findNearest(postalCode, limit)
+    : (await repo.listByStatus("approved")).slice(0, limit)
+
+  // Only expose fields the public page needs (no internal email/phone).
+  return NextResponse.json({
+    contractors: contractors.map((c) => ({
+      id: c.id,
+      company: c.company,
+      serviceArea: c.serviceArea ?? "",
+      specialties: c.specialties,
+    })),
+  })
+}
+
 /**
  * Public endpoint: a roofing company applies to be listed.
  * The application is stored with status "pending" for an admin to review.
