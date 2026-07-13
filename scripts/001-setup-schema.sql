@@ -62,3 +62,13 @@ CREATE TABLE IF NOT EXISTS request_contractors (
 );
 
 CREATE INDEX IF NOT EXISTS idx_request_contractors_contractor ON request_contractors(contractor_id);
+
+-- ----------------------------------------------------------------------------
+-- Stored report/materials PDFs (so downloads survive across serverless calls)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS report_files (
+  key          TEXT PRIMARY KEY,        -- storage key, e.g. "reports/<jobId>/report.pdf"
+  content_type VARCHAR(80) NOT NULL DEFAULT 'application/pdf',
+  bytes        BYTEA NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);

@@ -6,9 +6,10 @@ import {
   ArrowRight,
   Check,
   MapPin,
-  Star,
   ShieldCheck,
   CheckCircle2,
+  FileText,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -29,61 +30,77 @@ const colorOptions = [
   { id: "sand", label: "Sandstone", swatch: "oklch(0.78 0.06 80)" },
 ]
 
-const contractors = [
-  {
-    name: "Summit Roofing Co.",
-    rating: 4.9,
-    reviews: 312,
-    distance: "2.4 km away",
-    badge: "Top rated",
-    specialties: ["Asphalt", "Metal"],
-  },
-  {
-    name: "Maple Leaf Exteriors",
-    rating: 4.8,
-    reviews: 198,
-    distance: "4.1 km away",
-    badge: "Fast response",
-    specialties: ["Asphalt", "Cedar"],
-  },
-  {
-    name: "Northern Peak Roofers",
-    rating: 5.0,
-    reviews: 84,
-    distance: "5.7 km away",
-    badge: "New & rising",
-    specialties: ["Slate", "Metal"],
-  },
-  {
-    name: "TrueLine Roofing",
-    rating: 4.7,
-    reviews: 421,
-    distance: "6.3 km away",
-    badge: "Most booked",
-    specialties: ["Asphalt", "Cedar", "Slate"],
-  },
-]
+interface PublicContractor {
+  id: string
+  company: string
+  serviceArea: string
+  specialties: string[]
+}
+
+interface SubmitResult {
+  status: string
+  reportUrl?: string
+  materialsUrl?: string
+  matchedContractors: { id: string; name: string }[]
+}
 
 const TOTAL_STEPS = 3
 
 export function HomeownerQuiz() {
   const [step, setStep] = useState(0)
   const [postal, setPostal] = useState("")
+  const [address, setAddress] = useState("")
   const [product, setProduct] = useState<ProductType | null>(null)
   const [color, setColor] = useState<string | null>(null)
+  const [email, setEmail] = useState("")
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
+  const [contractors, setContractors] = useState<PublicContractor[]>([])
+  const [loadingContractors, setLoadingContractors] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [result, setResult] = useState<SubmitResult | null>(null)
+
   const postalValid = postal.trim().length >= 3
+
+  function toggleSelected(id: string) {
+    setSelectedIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]))
+  }
+
+  // Fetch real, admin-approved contractors near the postal code, then advance.
+  async function goToMatches() {
+    setLoadingContractors(true)
+    try {
+      const res = await fetch(`/api/contractors?postalCode=${encodeURIComponent(postal)}&limit=6`)
+      const data = (await res.json()) as { contractors: PublicContractor[] }
+      setContractors(data.contractors ?? [])
+      setSelectedIds((data.contractors ?? []).map((c) => c.id)) // pre-select all
+    } catch (err) {
+      console.log("[v0] failed to load contractors:", (err as Error).message)
+      setContractors([])
+    } finally {
+      setLoadingContractors(false)
+      setStep(3)
+    }
+  }
 
   async function submitRequest() {
     setSubmitting(true)
     try {
-      await fetch("/api/measurement", {
+      const res = await fetch("/api/measurement", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ postalCode: postal, product, color }),
+        body: JSON.stringify({
+          postalCode: postal,
+          address: address || postal,
+          product,
+          color,
+          homeownerEmail: email || undefined,
+          contractorIds: selectedIds,
+        }),
       })
+      const data = (await res.json()) as SubmitResult
+      setResult(data)
     } catch (err) {
       console.log("[v0] measurement request failed:", (err as Error).message)
     } finally {
@@ -101,9 +118,14 @@ export function HomeownerQuiz() {
   function reset() {
     setStep(0)
     setPostal("")
+    setAddress("")
     setProduct(null)
     setColor(null)
+    setEmail("")
     setSubmitted(false)
+    setContractors([])
+    setSelectedIds([])
+    setResult(null)
   }
 
   return (
@@ -157,26 +179,40 @@ export function HomeownerQuiz() {
                   </div>
                 </div>
 
-                {/* Step 0 — postal code */}
+                {/* Step 0 — location */}
                 {step === 0 && (
                   <div>
                     <h3 className="font-heading text-2xl font-bold">Where&apos;s your home?</h3>
                     <p className="mt-2 text-muted-foreground">
                       We use this to find approved contractors near you.
                     </p>
-                    <div className="mt-6">
-                      <label htmlFor="postal" className="mb-2 block text-sm font-medium">
-                        Postal code
-                      </label>
-                      <div className="relative">
-                        <MapPin className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+                    <div className="mt-6 space-y-4">
+                      <div>
+                        <label htmlFor="address" className="mb-2 block text-sm font-medium">
+                          Street address <span className="text-muted-foreground">(optional)</span>
+                        </label>
                         <input
-                          id="postal"
-                          value={postal}
-                          onChange={(e) => setPostal(e.target.value.toUpperCase())}
-                          placeholder="e.g. M5V 2T6"
-                          className="h-12 w-full rounded-lg border border-input bg-background pl-10 pr-3 text-base outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/30"
+                          id="address"
+                          value={address}
+                          onChange={(e) => setAddress(e.target.value)}
+                          placeholder="e.g. 123 King St W, Toronto, ON"
+                          className="h-12 w-full rounded-lg border border-input bg-background px-3 text-base outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/30"
                         />
+                      </div>
+                      <div>
+                        <label htmlFor="postal" className="mb-2 block text-sm font-medium">
+                          Postal code
+                        </label>
+                        <div className="relative">
+                          <MapPin className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+                          <input
+                            id="postal"
+                            value={postal}
+                            onChange={(e) => setPostal(e.target.value.toUpperCase())}
+                            placeholder="e.g. M5V 2T6"
+                            className="h-12 w-full rounded-lg border border-input bg-background pl-10 pr-3 text-base outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/30"
+                          />
+                        </div>
                       </div>
                     </div>
                     <Button
@@ -270,12 +306,20 @@ export function HomeownerQuiz() {
                         <ArrowLeft className="h-5 w-5" />
                       </Button>
                       <Button
-                        onClick={next}
-                        disabled={!color}
+                        onClick={goToMatches}
+                        disabled={!color || loadingContractors}
                         className="h-12 flex-1 bg-accent text-base text-accent-foreground hover:bg-accent/90"
                       >
-                        See my matches
-                        <ArrowRight className="ml-1 h-5 w-5" />
+                        {loadingContractors ? (
+                          <>
+                            <Loader2 className="mr-1 h-5 w-5 animate-spin" /> Finding roofers…
+                          </>
+                        ) : (
+                          <>
+                            See my matches
+                            <ArrowRight className="ml-1 h-5 w-5" />
+                          </>
+                        )}
                       </Button>
                     </div>
                   </div>
@@ -285,60 +329,103 @@ export function HomeownerQuiz() {
                 {step === 3 && (
                   <div>
                     <h3 className="font-heading text-2xl font-bold">
-                      {contractors.length} contractors near {postal || "you"}
+                      {contractors.length > 0
+                        ? `${contractors.length} contractor${contractors.length === 1 ? "" : "s"} near ${postal || "you"}`
+                        : `No approved roofers near ${postal || "you"} yet`}
                     </h3>
                     <p className="mt-2 text-muted-foreground">
-                      Swipe through and select the ones you&apos;d like quotes from.
+                      {contractors.length > 0
+                        ? "Select the companies you'd like quotes from."
+                        : "We'll still measure your roof and reach out as soon as a roofer in your area is approved."}
                     </p>
 
-                    <div className="mt-6 -mx-2 flex snap-x snap-mandatory gap-4 overflow-x-auto px-2 pb-4">
-                      {contractors.map((c) => (
-                        <article
-                          key={c.name}
-                          className="w-64 shrink-0 snap-start rounded-xl border border-border bg-background p-5"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="inline-flex items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent-foreground">
-                              {c.badge}
-                            </span>
-                            <ShieldCheck className="h-4 w-4 text-accent" />
-                          </div>
-                          <h4 className="mt-3 font-heading text-lg font-bold leading-tight">
-                            {c.name}
-                          </h4>
-                          <div className="mt-1 flex items-center gap-1 text-sm">
-                            <Star className="h-4 w-4 fill-accent text-accent" />
-                            <span className="font-medium">{c.rating}</span>
-                            <span className="text-muted-foreground">({c.reviews})</span>
-                          </div>
-                          <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
-                            <MapPin className="h-3.5 w-3.5" />
-                            {c.distance}
-                          </p>
-                          <div className="mt-3 flex flex-wrap gap-1.5">
-                            {c.specialties.map((s) => (
+                    {contractors.length > 0 && (
+                      <div className="mt-6 grid gap-3">
+                        {contractors.map((c) => {
+                          const selected = selectedIds.includes(c.id)
+                          return (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onClick={() => toggleSelected(c.id)}
+                              aria-pressed={selected}
+                              className={`flex items-start justify-between gap-3 rounded-xl border p-4 text-left transition-all ${
+                                selected
+                                  ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+                                  : "border-border hover:border-foreground/30"
+                              }`}
+                            >
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <ShieldCheck className="h-4 w-4 shrink-0 text-accent" />
+                                  <h4 className="truncate font-heading text-base font-bold">
+                                    {c.company}
+                                  </h4>
+                                </div>
+                                {c.serviceArea && (
+                                  <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
+                                    <MapPin className="h-3.5 w-3.5" />
+                                    {c.serviceArea}
+                                  </p>
+                                )}
+                                {c.specialties.length > 0 && (
+                                  <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {c.specialties.map((s) => (
+                                      <span
+                                        key={s}
+                                        className="rounded-md bg-muted px-2 py-0.5 text-xs capitalize text-muted-foreground"
+                                      >
+                                        {s}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                               <span
-                                key={s}
-                                className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+                                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                                  selected
+                                    ? "border-primary bg-primary text-primary-foreground"
+                                    : "border-border"
+                                }`}
                               >
-                                {s}
+                                {selected && <Check className="h-3 w-3" />}
                               </span>
-                            ))}
-                          </div>
-                        </article>
-                      ))}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    <div className="mt-6">
+                      <label htmlFor="email" className="mb-2 block text-sm font-medium">
+                        Email <span className="text-muted-foreground">(so we can send your report)</span>
+                      </label>
+                      <input
+                        id="email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="you@example.com"
+                        className="h-12 w-full rounded-lg border border-input bg-background px-3 text-base outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/30"
+                      />
                     </div>
 
-                    <div className="mt-2 flex gap-3">
+                    <div className="mt-6 flex gap-3">
                       <Button variant="outline" onClick={back} className="h-12 px-4">
                         <ArrowLeft className="h-5 w-5" />
                       </Button>
                       <Button
                         onClick={submitRequest}
-                        disabled={submitting}
+                        disabled={submitting || (contractors.length > 0 && selectedIds.length === 0)}
                         className="h-12 flex-1 bg-accent text-base text-accent-foreground hover:bg-accent/90"
                       >
-                        {submitting ? "Sending…" : "Request free quotes"}
+                        {submitting ? (
+                          <>
+                            <Loader2 className="mr-1 h-5 w-5 animate-spin" /> Sending…
+                          </>
+                        ) : (
+                          "Request free quotes"
+                        )}
                       </Button>
                     </div>
                   </div>
@@ -351,11 +438,41 @@ export function HomeownerQuiz() {
                 </span>
                 <h3 className="mt-6 font-heading text-2xl font-bold">Thanks — we&apos;ve got it.</h3>
                 <p className="mt-2 max-w-sm text-muted-foreground text-pretty">
-                  We&apos;re pulling together your roof measurements and passing them to the roofers
-                  you picked near{" "}
-                  <span className="font-medium text-foreground">{postal}</span>. Expect to hear from
-                  them in the next day or two.
+                  We&apos;ve measured your roof near{" "}
+                  <span className="font-medium text-foreground">{postal}</span> and notified the
+                  {result?.matchedContractors?.length
+                    ? ` ${result.matchedContractors.length} roofer${result.matchedContractors.length === 1 ? "" : "s"} you picked`
+                    : " roofers in your area"}
+                  . Your measurement report is ready below.
                 </p>
+
+                {result?.reportUrl ? (
+                  <div className="mt-6 grid w-full max-w-sm gap-3">
+                    <a
+                      href={result.reportUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-primary text-base font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                    >
+                      <FileText className="h-5 w-5" /> Download roof report
+                    </a>
+                    {result.materialsUrl && (
+                      <a
+                        href={result.materialsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-border text-base font-medium transition-colors hover:bg-muted"
+                      >
+                        <FileText className="h-5 w-5" /> Download materials list
+                      </a>
+                    )}
+                  </div>
+                ) : (
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    Your report is being prepared — we&apos;ll email it to you shortly.
+                  </p>
+                )}
+
                 <Button variant="outline" onClick={reset} className="mt-8 h-11">
                   Start a new request
                 </Button>

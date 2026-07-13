@@ -19,7 +19,7 @@
  *                            5. update the request status
  */
 
-import { getMeasurementProvider } from "@/lib/providers/measurement"
+import { getMeasurementProvider, annotateMockJob } from "@/lib/providers/measurement"
 import { getEmailProvider } from "@/lib/providers/email"
 import { getStorageProvider } from "@/lib/providers/storage"
 import {
@@ -34,6 +34,8 @@ export interface StartRequestInput {
   product: string
   color: string
   homeownerEmail?: string
+  /** Optional homeowner-selected contractors; falls back to nearest approved. */
+  contractorIds?: string[]
 }
 
 export interface StartRequestResult {
@@ -56,13 +58,28 @@ export async function startMeasurementRequest(input: StartRequestInput): Promise
     homeownerEmail: input.homeownerEmail,
   })
 
-  // 2. Find nearby approved contractors.
-  const contractors = await contractorRepo.findNearest(input.postalCode, 4)
+  // 2. Find nearby approved contractors (or use the homeowner's selection).
+  const contractors =
+    input.contractorIds && input.contractorIds.length
+      ? await contractorRepo.findByIds(input.contractorIds)
+      : await contractorRepo.findNearest(input.postalCode, 4)
 
-  // 3. Order the measurement (provider-agnostic).
-  const job = await measurement.createJob(input.address)
+  // 3. Order the measurement (provider-agnostic). Pass structured parts so the
+  //    provider (and the mock PDF) can use the postal code.
+  const job = await measurement.createJob(input.address, {
+    address: input.address,
+    city: "",
+    state: "",
+    zip: input.postalCode,
+  })
+  annotateMockJob(job.id, {
+    address: input.address,
+    postalCode: input.postalCode,
+    product: input.product,
+    color: input.color,
+  })
 
-  // 4. Record what we started (job + matched contractors), then return.
+  // 4. Record what we started (job + matched contractors).
   await requestRepo.setMatches(
     request.id,
     contractors.map((c) => c.id),
@@ -73,10 +90,20 @@ export async function startMeasurementRequest(input: StartRequestInput): Promise
     status: "measurement_ordered",
   })
 
+  // 5. Try to finish immediately. Mock reports are ready instantly, so the
+  //    homeowner flow completes here. Real EagleView jobs are still "in
+  //    progress" at this point — processing then no-ops and the cron poller
+  //    picks it up later. Never let this fail the submission.
+  try {
+    await processMeasurementJob(job.id)
+  } catch (err) {
+    console.log("[v0] [workflow] immediate processing skipped:", (err as Error).message)
+  }
+
   return {
     requestId: request.id,
     jobId: job.id,
-    matchedContractors: contractors.map((c) => ({ id: c.id, name: c.name })),
+    matchedContractors: contractors.map((c) => ({ id: c.id, name: c.company })),
   }
 }
 
@@ -134,7 +161,7 @@ async function notifyContractor(
   await email.send({
     to: contractor.email,
     subject: `New roofing lead near ${postalCode}`,
-    html: `<p>Hi ${contractor.name},</p>
+    html: `<p>Hi ${contractor.contactName} at ${contractor.company},</p>
       <p>A homeowner near <strong>${postalCode}</strong> asked to hear from you.
       Their roof measurement report and materials list are attached.</p>
       <p>Reply with a quote to get started.</p>`,
