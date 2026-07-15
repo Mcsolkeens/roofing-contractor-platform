@@ -236,6 +236,8 @@ interface ContractorRow {
   specialties: string[]
   status: ContractorStatus
   created_at: Date
+  // Index signature so this satisfies pg's QueryResultRow constraint.
+  [key: string]: unknown
 }
 
 function mapContractor(r: ContractorRow): Contractor {
@@ -337,6 +339,8 @@ interface RequestRow {
   report_url: string | null
   materials_url: string | null
   created_at: Date
+  // Index signature so this satisfies pg's QueryResultRow constraint.
+  [key: string]: unknown
 }
 
 async function mapRequest(r: RequestRow): Promise<MeasurementRequest> {

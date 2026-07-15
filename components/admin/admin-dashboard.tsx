@@ -242,9 +242,9 @@ export function AdminDashboard() {
       </div>
 
       {/* Sent notifications */}
-      <h2 className="mt-12 font-heading text-2xl font-bold tracking-tight">Contractor notifications</h2>
+      <h2 className="mt-12 font-heading text-2xl font-bold tracking-tight">Report emails</h2>
       <p className="mt-1 text-muted-foreground">
-        Lead emails sent to matched contractors, newest first.{" "}
+        Roof reports delivered to the RoofPitch inbox, newest first.{" "}
         {emails.length === 0
           ? ""
           : emails[0].provider === "console"

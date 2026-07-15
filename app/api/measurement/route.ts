@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
 import { startMeasurementRequest } from "@/lib/workflow/measurement-workflow"
-import { getMeasurementRequestRepository } from "@/lib/workflow/repository"
 
 export const runtime = "nodejs"
 
@@ -13,7 +12,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "postalCode and product are required" }, { status: 400 })
     }
 
-    const result = await startMeasurementRequest({
+    await startMeasurementRequest({
       address: address ?? postalCode,
       postalCode,
       product,
@@ -22,20 +21,10 @@ export async function POST(request: Request) {
       contractorIds: Array.isArray(contractorIds) ? contractorIds : undefined,
     })
 
-    // The mock provider finishes instantly, so the report is usually ready by
-    // now. Return its current state (incl. download URLs) to the homeowner.
-    const repo = getMeasurementRequestRepository()
-    const saved = await repo.findById(result.requestId)
-
-    return NextResponse.json(
-      {
-        ...result,
-        status: saved?.status ?? "measurement_ordered",
-        reportUrl: saved?.reportUrl,
-        materialsUrl: saved?.materialsUrl,
-      },
-      { status: 202 },
-    )
+    // Deliberately do NOT return report/materials URLs. The roof report is an
+    // internal document emailed to the RoofPitch admin; the homeowner only ever
+    // sees a confirmation that their request was received.
+    return NextResponse.json({ ok: true }, { status: 202 })
   } catch (err) {
     console.log("[v0] [api/measurement] error:", (err as Error).message)
     return NextResponse.json({ error: "Could not start measurement request" }, { status: 500 })

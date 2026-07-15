@@ -9,7 +9,6 @@ import {
   MapPin,
   ShieldCheck,
   CheckCircle2,
-  FileText,
   Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -38,13 +37,6 @@ interface PublicContractor {
   specialties: string[]
 }
 
-interface SubmitResult {
-  status: string
-  reportUrl?: string
-  materialsUrl?: string
-  matchedContractors: { id: string; name: string }[]
-}
-
 const TOTAL_STEPS = 3
 
 export function HomeownerQuiz() {
@@ -60,7 +52,6 @@ export function HomeownerQuiz() {
   const [contractors, setContractors] = useState<PublicContractor[]>([])
   const [loadingContractors, setLoadingContractors] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
-  const [result, setResult] = useState<SubmitResult | null>(null)
 
   const postalValid = postal.trim().length >= 3
 
@@ -88,7 +79,7 @@ export function HomeownerQuiz() {
   async function submitRequest() {
     setSubmitting(true)
     try {
-      const res = await fetch("/api/measurement", {
+      await fetch("/api/measurement", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -100,8 +91,6 @@ export function HomeownerQuiz() {
           contractorIds: selectedIds,
         }),
       })
-      const data = (await res.json()) as SubmitResult
-      setResult(data)
     } catch (err) {
       console.log("[v0] measurement request failed:", (err as Error).message)
     } finally {
@@ -126,7 +115,6 @@ export function HomeownerQuiz() {
     setSubmitted(false)
     setContractors([])
     setSelectedIds([])
-    setResult(null)
   }
 
   return (
@@ -416,11 +404,11 @@ export function HomeownerQuiz() {
                     )}
 
                     <div className="mt-6">
-                      <label htmlFor="email" className="mb-2 block text-sm font-medium">
-                        Email <span className="text-muted-foreground">(so we can send your report)</span>
+                      <label htmlFor="quiz-email" className="mb-2 block text-sm font-medium">
+                        Email <span className="text-muted-foreground">(so we can send your quotes)</span>
                       </label>
                       <input
-                        id="email"
+                        id="quiz-email"
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
@@ -455,40 +443,16 @@ export function HomeownerQuiz() {
                 <span className="flex h-16 w-16 items-center justify-center rounded-full bg-accent">
                   <CheckCircle2 className="h-9 w-9 text-accent-foreground" />
                 </span>
-                <h3 className="mt-6 font-heading text-2xl font-bold">Thanks — we&apos;ve got it.</h3>
+                <h3 className="mt-6 font-heading text-2xl font-bold">Request received</h3>
                 <p className="mt-2 max-w-sm text-muted-foreground text-pretty">
-                  We&apos;ve measured your roof near{" "}
-                  <span className="font-medium text-foreground">{postal}</span> and notified the
-                  {result?.matchedContractors?.length
-                    ? ` ${result.matchedContractors.length} roofer${result.matchedContractors.length === 1 ? "" : "s"} you picked`
-                    : " roofers in your area"}
-                  . Your measurement report is ready below.
+                  Thanks! We&apos;ve got your details for the property near{" "}
+                  <span className="font-medium text-foreground">{postal}</span>. Our team is
+                  reviewing your request and will be in touch with your free quotes soon.
                 </p>
-
-                {result?.reportUrl ? (
-                  <div className="mt-6 grid w-full max-w-sm gap-3">
-                    <a
-                      href={result.reportUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-primary text-base font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-                    >
-                      <FileText className="h-5 w-5" /> Download roof report
-                    </a>
-                    {result.materialsUrl && (
-                      <a
-                        href={result.materialsUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-border text-base font-medium transition-colors hover:bg-muted"
-                      >
-                        <FileText className="h-5 w-5" /> Download materials list
-                      </a>
-                    )}
-                  </div>
-                ) : (
-                  <p className="mt-4 text-sm text-muted-foreground">
-                    Your report is being prepared — we&apos;ll email it to you shortly.
+                {email && (
+                  <p className="mt-3 max-w-sm text-sm text-muted-foreground">
+                    We&apos;ll reach out at{" "}
+                    <span className="font-medium text-foreground">{email}</span>.
                   </p>
                 )}
 

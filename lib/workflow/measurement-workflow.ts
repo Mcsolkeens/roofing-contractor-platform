@@ -142,29 +142,52 @@ export async function processMeasurementJob(jobId: string): Promise<ProcessJobRe
     materialsUrl: storedMaterials.url,
   })
 
-  // 4. Email the matched contractors with the report attached.
+  // 4. Email the RoofPitch admin (internal) with the report + materials
+  //    attached. The homeowner never sees these files, and contractors are NOT
+  //    emailed the report — RoofPitch reviews internally and reaches out.
   const contractors = await contractorRepo.findByIds(request.contractorIds)
-  await Promise.all(contractors.map((c) => notifyContractor(email, c, request.postalCode, report, materials)))
+  await notifyAdmin(email, request, contractors, report, materials)
 
-  // 5. Mark done.
+  // 5. Mark done. (Status name kept for compatibility; means "report delivered
+  //    to RoofPitch and ready for internal follow-up".)
   await requestRepo.update(request.id, { status: "contractors_notified" })
-  return { status: "ready", emailed: contractors.length }
+  return { status: "ready", emailed: 1 }
 }
 
-async function notifyContractor(
+/** Where internal report emails go. Falls back to EMAIL_FROM if unset. */
+function adminEmail(): string {
+  return (
+    process.env.ROOFPITCH_ADMIN_EMAIL ??
+    process.env.ADMIN_NOTIFICATION_EMAIL ??
+    "admin@roofpitch.ca"
+  )
+}
+
+async function notifyAdmin(
   email: ReturnType<typeof getEmailProvider>,
-  contractor: Contractor,
-  postalCode: string,
+  request: { address: string; postalCode: string; product: string; color: string; homeownerEmail?: string },
+  contractors: Contractor[],
   report: { filename: string; base64: string; contentType: string },
   materials: { filename: string; base64: string; contentType: string },
 ) {
+  const preferred =
+    contractors.length > 0
+      ? contractors.map((c) => `${c.company} (${c.email})`).join(", ")
+      : "None selected — assign from the dashboard"
+
   await email.send({
-    to: contractor.email,
-    subject: `New roofing lead near ${postalCode}`,
-    html: `<p>Hi ${contractor.contactName} at ${contractor.company},</p>
-      <p>A homeowner near <strong>${postalCode}</strong> asked to hear from you.
-      Their roof measurement report and materials list are attached.</p>
-      <p>Reply with a quote to get started.</p>`,
+    to: adminEmail(),
+    subject: `New roof report ready — ${request.address || request.postalCode}`,
+    html: `<p><strong>New homeowner request processed.</strong></p>
+      <ul>
+        <li><strong>Address:</strong> ${request.address || "n/a"}</li>
+        <li><strong>Postal code:</strong> ${request.postalCode}</li>
+        <li><strong>Product / color:</strong> ${request.product} / ${request.color || "n/a"}</li>
+        <li><strong>Homeowner email:</strong> ${request.homeownerEmail ?? "not provided"}</li>
+        <li><strong>Homeowner-preferred contractors:</strong> ${preferred}</li>
+      </ul>
+      <p>The roof measurement report and materials list are attached for your review.
+      Follow up with the homeowner and forward details to a contractor as needed.</p>`,
     attachments: [
       { filename: report.filename, base64: report.base64, contentType: report.contentType },
       { filename: materials.filename, base64: materials.base64, contentType: materials.contentType },
