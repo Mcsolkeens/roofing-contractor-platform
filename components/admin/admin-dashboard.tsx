@@ -4,7 +4,7 @@ import { useState } from "react"
 import useSWR from "swr"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Check, X, Clock, LogOut, MapPin, Mail, Phone, FileText, Send, Paperclip } from "lucide-react"
+import { Check, X, Clock, LogOut, MapPin, Mail, Phone, FileText, Send, Paperclip, RefreshCw } from "lucide-react"
 import type { Contractor, ContractorStatus, MeasurementRequest } from "@/lib/workflow/repository"
 import type { SentEmail } from "@/lib/providers/email"
 
@@ -35,6 +35,26 @@ export function AdminDashboard() {
   }>(`/api/admin/contractors?status=${filter}`, fetcher, { refreshInterval: 5000 })
 
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [processing, setProcessing] = useState(false)
+  const [processMsg, setProcessMsg] = useState<string | null>(null)
+
+  async function processJobs() {
+    setProcessing(true)
+    setProcessMsg(null)
+    try {
+      const res = await fetch("/api/admin/process-jobs", { method: "POST" })
+      const data = (await res.json()) as { checked?: number; results?: { status: string }[] }
+      const ready = (data.results ?? []).filter((r) => r.status === "ready").length
+      setProcessMsg(
+        `Checked ${data.checked ?? 0} in progress · ${ready} report${ready === 1 ? "" : "s"} delivered.`,
+      )
+      mutate()
+    } catch {
+      setProcessMsg("Could not process jobs. Try again.")
+    } finally {
+      setProcessing(false)
+    }
+  }
 
   async function setStatus(id: string, status: ContractorStatus) {
     setBusyId(id)
@@ -65,10 +85,19 @@ export function AdminDashboard() {
             Review companies that applied to be listed, and approve the ones you trust.
           </p>
         </div>
-        <Button variant="outline" onClick={logout} className="gap-2">
-          <LogOut className="h-4 w-4" /> Sign out
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={processJobs} disabled={processing} className="gap-2">
+            <RefreshCw className={`h-4 w-4 ${processing ? "animate-spin" : ""}`} />
+            {processing ? "Processing…" : "Process pending reports"}
+          </Button>
+          <Button variant="outline" onClick={logout} className="gap-2">
+            <LogOut className="h-4 w-4" /> Sign out
+          </Button>
+        </div>
       </header>
+      {processMsg && (
+        <p className="mt-3 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">{processMsg}</p>
+      )}
 
       {/* Filter tabs */}
       <div className="mt-8 flex flex-wrap gap-2">

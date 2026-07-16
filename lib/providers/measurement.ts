@@ -66,10 +66,26 @@ function parseAddress(raw: string): EagleViewAddress {
 /* EagleView — real provider (used in production)                      */
 /* ------------------------------------------------------------------ */
 
+/**
+ * EagleView host per environment. We run against the sandbox until EagleView
+ * approves the integration for production, then flip EAGLEVIEW_ENV=production
+ * (or set EAGLEVIEW_API_BASE explicitly). The OAuth token host is the same in
+ * both environments; only the API host changes.
+ */
+const EAGLEVIEW_HOSTS = {
+  sandbox: "https://sandbox.apicenter.eagleview.com",
+  production: "https://apis.eagleview.com",
+} as const
+
 export class EagleViewProvider implements MeasurementProvider {
   readonly name = "eagleview"
-  // API host for placing/reading orders. Defaults to EagleView's documented host.
-  private readonly baseUrl = process.env.EAGLEVIEW_API_BASE ?? "https://apis.eagleview.com"
+  // API host for placing/reading orders. Resolution order:
+  //   1. EAGLEVIEW_API_BASE (explicit override)
+  //   2. EAGLEVIEW_ENV=sandbox|production   (defaults to sandbox)
+  private readonly baseUrl =
+    process.env.EAGLEVIEW_API_BASE ??
+    EAGLEVIEW_HOSTS[(process.env.EAGLEVIEW_ENV as keyof typeof EAGLEVIEW_HOSTS) ?? "sandbox"] ??
+    EAGLEVIEW_HOSTS.sandbox
   // OAuth token endpoint. Documented default is the API Center host.
   private readonly tokenUrl = process.env.EAGLEVIEW_TOKEN_URL ?? "https://apicenter.eagleview.com/oauth2/v1/token"
   private readonly timeoutMs = Number(process.env.EAGLEVIEW_TIMEOUT_MS ?? 20000)

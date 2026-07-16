@@ -129,13 +129,13 @@ export function HomeownerQuiz() {
               Tell us about your roof.
             </h2>
             <p className="mt-5 text-lg leading-relaxed text-muted-foreground text-pretty">
-              Answer three quick questions and we&apos;ll show you roofing companies near you. It&apos;s
-              free, and you choose who to talk to.
+              Answer three quick questions and pick the roofing companies near you that you&apos;d
+              like quotes from. It&apos;s free, and our team handles the rest.
             </p>
             <ul className="mt-8 space-y-3">
               {[
                 "We check every company before they show up here",
-                "Compare a few quotes before you decide",
+                "We measure your roof and line up your quotes",
                 "We don't sell your phone number or email",
               ].map((item) => (
                 <li key={item} className="flex items-center gap-3 text-sm">
