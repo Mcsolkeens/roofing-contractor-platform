@@ -43,6 +43,26 @@ export function AdminDashboard() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [processing, setProcessing] = useState(false)
   const [processMsg, setProcessMsg] = useState<string | null>(null)
+  const [testing, setTesting] = useState(false)
+
+  async function sendTestEmail() {
+    setTesting(true)
+    setProcessMsg(null)
+    try {
+      const res = await fetch("/api/admin/test-report-email", { method: "POST" })
+      const data = (await res.json()) as { ok?: boolean; sentTo?: string; error?: string }
+      setProcessMsg(
+        data.ok
+          ? `Test report email sent to ${data.sentTo} with both PDFs attached.`
+          : `Test email failed: ${data.error ?? "unknown error"}`,
+      )
+      mutate()
+    } catch {
+      setProcessMsg("Test email failed. Try again.")
+    } finally {
+      setTesting(false)
+    }
+  }
 
   async function processJobs() {
     setProcessing(true)
@@ -95,6 +115,10 @@ export function AdminDashboard() {
           <Button onClick={processJobs} disabled={processing} className="gap-2">
             <RefreshCw className={`h-4 w-4 ${processing ? "animate-spin" : ""}`} />
             {processing ? "Processing…" : "Process pending reports"}
+          </Button>
+          <Button variant="outline" onClick={sendTestEmail} disabled={testing} className="gap-2">
+            <Send className={`h-4 w-4 ${testing ? "animate-pulse" : ""}`} />
+            {testing ? "Sending…" : "Send test report email"}
           </Button>
           <Button variant="outline" onClick={logout} className="gap-2">
             <LogOut className="h-4 w-4" /> Sign out
