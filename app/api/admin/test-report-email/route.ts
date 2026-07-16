@@ -36,7 +36,7 @@ export async function POST(request: Request) {
       "admin@roofpitch.ca"
 
     const email = getEmailProvider()
-    await email.send({
+    const result = await email.send({
       to,
       subject: `TEST — roof report ready — ${address}`,
       html: `<p><strong>This is a test of the RoofPitch report email.</strong></p>
@@ -61,7 +61,13 @@ export async function POST(request: Request) {
       ],
     })
 
-    return NextResponse.json({ ok: true, sentTo: to, provider: email.constructor.name })
+    return NextResponse.json({
+      ok: true,
+      sentTo: to,
+      provider: email.name,
+      messageId: result.id,
+      delivered: email.name === "resend" ? "Sent via Resend" : "Simulated (no RESEND_API_KEY)",
+    })
   } catch (err) {
     console.log("[v0] [test-report-email] error:", (err as Error).message)
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })
