@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server"
-import { readdir, readFile } from "node:fs/promises"
-import path from "node:path"
 import { query } from "@/lib/db"
+import { SCHEMA_SQL, SEED_SQL } from "@/lib/migrate-sql"
+
+export const runtime = "nodejs"
+export const maxDuration = 60
 
 /**
- * Runs every SQL file in /scripts in order. Guarded by MIGRATE_TOKEN so it
- * can't be triggered publicly. Safe to run repeatedly — the scripts use
- * IF NOT EXISTS / ON CONFLICT.
+ * Applies the schema and demo seed. Guarded by MIGRATE_TOKEN so it can't be
+ * triggered publicly. Safe to run repeatedly — all statements are idempotent.
  *
- *   curl -X POST localhost:3000/api/admin/migrate -H "x-migrate-token: <token>"
+ *   curl -X POST /api/admin/migrate -H "x-migrate-token: <token>"
+ *
+ * Pass ?seed=false to run the schema only (skip demo contractors).
  */
 export async function POST(req: Request) {
   const token = process.env.MIGRATE_TOKEN ?? "dev-migrate"
@@ -16,15 +19,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 })
   }
 
-  const dir = path.join(process.cwd(), "scripts")
-  const files = (await readdir(dir)).filter((f) => f.endsWith(".sql")).sort()
+  const url = new URL(req.url)
+  const withSeed = url.searchParams.get("seed") !== "false"
   const ran: string[] = []
 
-  for (const file of files) {
-    const sql = await readFile(path.join(dir, file), "utf8")
-    await query(sql)
-    ran.push(file)
+  try {
+    await query(SCHEMA_SQL)
+    ran.push("schema")
+    if (withSeed) {
+      await query(SEED_SQL)
+      ran.push("seed")
+    }
+    return NextResponse.json({ ok: true, ran })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.log("[v0] [migrate] failed:", message)
+    return NextResponse.json({ error: "migration_failed", message, ran }, { status: 500 })
   }
-
-  return NextResponse.json({ ok: true, ran })
 }
