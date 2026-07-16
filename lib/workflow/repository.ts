@@ -115,7 +115,7 @@ function areaKey(postal: string): string {
 const seedContractors: Contractor[] = [
   { id: "c1", company: "Summit Roofing Co.", contactName: "Dave Nguyen", email: "leads@summitroofing.example", phone: "416-555-0110", serviceArea: "Downtown Toronto", postalPrefix: "M5V", specialties: ["shingles", "metal"], status: "approved", createdAt: new Date().toISOString() },
   { id: "c2", company: "Maple Leaf Exteriors", contactName: "Sarah Bianchi", email: "quotes@mapleleaf.example", phone: "416-555-0134", serviceArea: "Downtown Toronto", postalPrefix: "M5H", specialties: ["shingles", "flat"], status: "approved", createdAt: new Date().toISOString() },
-  { id: "c3", company: "Northern Peak Roofers", contactName: "Tom Reyes", email: "hello@northernpeak.example", phone: "705-555-0177", serviceArea: "Greater Sudbury", postalPrefix: "P3A", specialties: ["metal"], status: "pending", createdAt: new Date().toISOString() },
+  { id: "c3", company: "Northern Peak Roofers", contactName: "Tom Reyes", email: "hello@northernpeak.example", phone: "705-555-0177", serviceArea: "Greater Sudbury", postalPrefix: "P3A", specialties: ["metal", "shingles"], status: "approved", createdAt: new Date().toISOString() },
   { id: "c4", company: "TrueLine Roofing", contactName: "Priya Shah", email: "office@trueline.example", phone: "905-555-0199", serviceArea: "Mississauga, Oakville", postalPrefix: "L5B", specialties: ["shingles", "flat", "metal"], status: "pending", createdAt: new Date().toISOString() },
 ]
 
@@ -467,10 +467,50 @@ function useAurora(): boolean {
   return Boolean(process.env.DATABASE_URL)
 }
 
+/**
+ * Once a database call fails (e.g. Aurora IAM/OIDC not yet trusted by AWS), we
+ * remember it for the lifetime of this process and route straight to the
+ * in-memory store — so the site keeps working instead of 500ing. Serverless
+ * cold starts reset this flag, so the DB is automatically retried once the AWS
+ * trust policy is fixed; no redeploy needed.
+ */
+let dbUnavailable = false
+
+/**
+ * Wraps a database repository so any failing async method transparently falls
+ * back to an in-memory implementation. Keeps production functional while the
+ * Aurora connection is being provisioned.
+ */
+function withFallback<T extends object>(primary: T, fallback: T): T {
+  return new Proxy(primary, {
+    get(target, prop, receiver) {
+      const primaryValue = Reflect.get(target, prop, receiver)
+      if (typeof primaryValue !== "function") return primaryValue
+      const fallbackValue = Reflect.get(fallback, prop, fallback)
+      return async (...args: unknown[]) => {
+        if (dbUnavailable) {
+          return (fallbackValue as (...a: unknown[]) => unknown).apply(fallback, args)
+        }
+        try {
+          return await (primaryValue as (...a: unknown[]) => Promise<unknown>).apply(target, args)
+        } catch (err) {
+          dbUnavailable = true
+          console.log(
+            `[v0] Database unavailable (${String(prop)}): ${(err as Error).message}. Falling back to in-memory store.`,
+          )
+          return (fallbackValue as (...a: unknown[]) => unknown).apply(fallback, args)
+        }
+      }
+    },
+  })
+}
+
 export function getContractorRepository(): ContractorRepository {
-  return useAurora() ? new DbContractorRepository() : new InMemoryContractorRepository()
+  if (!useAurora()) return new InMemoryContractorRepository()
+  return withFallback(new DbContractorRepository(), new InMemoryContractorRepository())
 }
 
 export function getMeasurementRequestRepository(): MeasurementRequestRepository {
-  return useAurora() ? new DbMeasurementRequestRepository() : new InMemoryMeasurementRequestRepository()
+  if (!useAurora()) return new InMemoryMeasurementRequestRepository()
+  return withFallback(new DbMeasurementRequestRepository(), new InMemoryMeasurementRequestRepository())
 }

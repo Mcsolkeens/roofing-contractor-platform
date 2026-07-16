@@ -34,6 +34,12 @@ export function AdminDashboard() {
     emails: SentEmail[]
   }>(`/api/admin/contractors?status=${filter}`, fetcher, { refreshInterval: 5000 })
 
+  const { data: status } = useSWR<{ persistent: boolean; driver: string; error?: string }>(
+    "/api/admin/status",
+    fetcher,
+    { refreshInterval: 15000 },
+  )
+
   const [busyId, setBusyId] = useState<string | null>(null)
   const [processing, setProcessing] = useState(false)
   const [processMsg, setProcessMsg] = useState<string | null>(null)
@@ -97,6 +103,22 @@ export function AdminDashboard() {
       </header>
       {processMsg && (
         <p className="mt-3 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">{processMsg}</p>
+      )}
+
+      {status && !status.persistent && (
+        <div className="mt-4 rounded-lg border border-accent/40 bg-accent/10 px-4 py-3 text-sm">
+          <p className="font-medium text-foreground">Temporary storage — data will not persist</p>
+          <p className="mt-1 text-muted-foreground text-pretty">
+            The database isn&apos;t connected, so new registrations and approvals reset when the
+            server restarts. Reports still generate and email. To enable permanent storage, finish
+            the Aurora/AWS trust setup.
+          </p>
+        </div>
+      )}
+      {status?.persistent && (
+        <p className="mt-4 flex items-center gap-1.5 text-sm text-primary">
+          <Check className="h-4 w-4" /> Database connected — data is saved permanently.
+        </p>
       )}
 
       {/* Filter tabs */}
