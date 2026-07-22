@@ -180,27 +180,27 @@ export class EagleViewProvider implements MeasurementProvider {
     const productId = Number(process.env.EAGLEVIEW_PRODUCT_ID ?? 106) // 106 = roof report
     const deliveryProductId = Number(process.env.EAGLEVIEW_DELIVERY_PRODUCT_ID ?? 8)
 
+    // IMPORTANT: EagleView expects OrderReports and ReportAddresses as single
+    // OBJECTS, not arrays. Sending arrays makes their gateway reject the request
+    // with a misleading HTTP 503 "upstream connect error" (looks like an outage
+    // but is actually a malformed-payload rejection). Verified against the sandbox.
     const body = {
-      OrderReports: [
-        {
-          ReportAddresses: [
-            {
-              Address: addr.address,
-              City: addr.city,
-              State: addr.state,
-              Zip: addr.zip,
-              Country: addr.country ?? "US",
-              Latitude: addr.latitude ?? null,
-              Longitude: addr.longitude ?? null,
-              AddressType: 1,
-            },
-          ],
-          PrimaryProductId: productId,
-          DeliveryProductId: deliveryProductId,
-          MeasurementInstructionType: 3,
-          ChangesInLast4Years: false,
+      OrderReports: {
+        ReportAddresses: {
+          Address: addr.address,
+          City: addr.city,
+          State: addr.state,
+          Zip: addr.zip,
+          Country: addr.country ?? "US",
+          Latitude: addr.latitude ?? null,
+          Longitude: addr.longitude ?? null,
+          AddressType: 1,
         },
-      ],
+        PrimaryProductId: productId,
+        DeliveryProductId: deliveryProductId,
+        MeasurementInstructionType: 3,
+        ChangesInLast4Years: false,
+      },
     }
 
     const res = await this.fetchWithTimeout(`${this.baseUrl}/v2/Order/PlaceOrder`, {
@@ -213,8 +213,10 @@ export class EagleViewProvider implements MeasurementProvider {
       throw new Error(`EagleView PlaceOrder failed (${res.status}). ${detail.slice(0, 300)}`)
     }
     const data = (await res.json()) as Record<string, unknown>
-    // The report id location varies; probe the common shapes.
+    // EagleView responds with { OrderId, ReportIds: [<id>] }. Probe that first,
+    // then fall back to older/alternate shapes for safety.
     const reportId =
+      ((data.ReportIds as Array<string | number> | undefined)?.[0]) ??
       (data.reportId as string | number | undefined) ??
       (data.ReportId as string | number | undefined) ??
       ((data.reports as Array<{ reportId?: string | number }> | undefined)?.[0]?.reportId) ??
@@ -272,11 +274,28 @@ export class EagleViewProvider implements MeasurementProvider {
     return { filename, contentType, base64: buf.toString("base64") }
   }
 
-  // Roof 3D PDF (fileFormat=2, fileType=199) — the human-readable roof report.
-  downloadReport(jobId: string) {
-    return this.download(jobId, 2, 199, `roof-report-${jobId}.pdf`)
+  /**
+   * The human-readable roof report PDF. EagleView exposes this as a direct
+   * download URL in the GetReport payload (`ReportDownloadLink`) rather than via
+   * GetReportFile — verified against the sandbox, where GetReportFile file-type
+   * codes return images/JSON, not the report PDF.
+   */
+  async downloadReport(jobId: string): Promise<ReportFile> {
+    const details = (await this.getReportDetails(jobId)) as Record<string, unknown>
+    const link =
+      (details.ReportDownloadLink as string | undefined) ??
+      (details.reportDownloadLink as string | undefined)
+    if (!link) throw new Error("EagleView report has no ReportDownloadLink yet (not ready).")
+    const f = await this.fetchWithTimeout(link, {})
+    if (!f.ok) throw new Error(`EagleView report PDF download failed (${f.status})`)
+    const buf = Buffer.from(await f.arrayBuffer())
+    return {
+      filename: `roof-report-${jobId}.pdf`,
+      contentType: f.headers.get("content-type") ?? "application/pdf",
+      base64: buf.toString("base64"),
+    }
   }
-  // EV Measurement JSON (fileFormat=18, fileType=107) — structured measurements.
+  // EV Measurement export JSON (fileFormat=18, fileType=107) — structured measurements.
   downloadMaterials(jobId: string) {
     return this.download(jobId, 18, 107, `measurements-${jobId}.json`)
   }
