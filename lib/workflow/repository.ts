@@ -112,11 +112,34 @@ function areaKey(postal: string): string {
 /* In-memory implementation                                            */
 /* ================================================================== */
 
+// Four approved contractors in each of four metros so the end-to-end flow can be
+// tested anywhere. Matching is by "area key" = first 2 chars of the FSA
+// (M5 = downtown Toronto, P3 = Greater Sudbury, K1 = central Ottawa,
+// V6 = Vancouver). Any postal code in one of these areas returns these companies.
 const seedContractors: Contractor[] = [
+  // ---- Toronto (area key M5) ----
   { id: "c1", company: "Summit Roofing Co.", contactName: "Dave Nguyen", email: "leads@summitroofing.example", phone: "416-555-0110", serviceArea: "Downtown Toronto", postalPrefix: "M5V", specialties: ["shingles", "metal"], status: "approved", createdAt: new Date().toISOString() },
   { id: "c2", company: "Maple Leaf Exteriors", contactName: "Sarah Bianchi", email: "quotes@mapleleaf.example", phone: "416-555-0134", serviceArea: "Downtown Toronto", postalPrefix: "M5H", specialties: ["shingles", "flat"], status: "approved", createdAt: new Date().toISOString() },
-  { id: "c3", company: "Northern Peak Roofers", contactName: "Tom Reyes", email: "hello@northernpeak.example", phone: "705-555-0177", serviceArea: "Greater Sudbury", postalPrefix: "P3A", specialties: ["metal", "shingles"], status: "approved", createdAt: new Date().toISOString() },
-  { id: "c4", company: "TrueLine Roofing", contactName: "Priya Shah", email: "office@trueline.example", phone: "905-555-0199", serviceArea: "Mississauga, Oakville", postalPrefix: "L5B", specialties: ["shingles", "flat", "metal"], status: "pending", createdAt: new Date().toISOString() },
+  { id: "c3", company: "Lakeshore Roofing", contactName: "Marco Silva", email: "info@lakeshoreroof.example", phone: "416-555-0142", serviceArea: "Toronto Waterfront", postalPrefix: "M5A", specialties: ["shingles", "metal"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c4", company: "Harbourfront Exteriors", contactName: "Amy Wong", email: "hello@harbourfront.example", phone: "416-555-0188", serviceArea: "Central Toronto", postalPrefix: "M5T", specialties: ["flat", "metal"], status: "approved", createdAt: new Date().toISOString() },
+
+  // ---- Greater Sudbury (area key P3) ----
+  { id: "c5", company: "Northern Peak Roofers", contactName: "Tom Reyes", email: "hello@northernpeak.example", phone: "705-555-0177", serviceArea: "Greater Sudbury", postalPrefix: "P3A", specialties: ["metal", "shingles"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c6", company: "Nickel City Roofing", contactName: "Julie Tremblay", email: "quotes@nickelcityroof.example", phone: "705-555-0181", serviceArea: "Sudbury", postalPrefix: "P3B", specialties: ["shingles", "flat"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c7", company: "Laurentian Exteriors", contactName: "Ken Blais", email: "office@laurentianext.example", phone: "705-555-0193", serviceArea: "Sudbury South", postalPrefix: "P3C", specialties: ["shingles", "metal"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c8", company: "Boreal Roofing Co.", contactName: "Rita Cormier", email: "info@borealroof.example", phone: "705-555-0166", serviceArea: "New Sudbury", postalPrefix: "P3E", specialties: ["metal", "flat"], status: "approved", createdAt: new Date().toISOString() },
+
+  // ---- Ottawa (area key K1) ----
+  { id: "c9", company: "Capital Roofing", contactName: "Sam Okoye", email: "leads@capitalroofing.example", phone: "613-555-0110", serviceArea: "Downtown Ottawa", postalPrefix: "K1P", specialties: ["shingles", "metal"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c10", company: "Rideau Roofers", contactName: "Claire Dubois", email: "quotes@rideauroofers.example", phone: "613-555-0124", serviceArea: "Rideau, Ottawa", postalPrefix: "K1N", specialties: ["shingles", "flat"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c11", company: "ByWard Exteriors", contactName: "Hassan Ali", email: "office@bywardext.example", phone: "613-555-0137", serviceArea: "ByWard Market", postalPrefix: "K1S", specialties: ["metal", "shingles"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c12", company: "Parliament Roofing", contactName: "Nina Roy", email: "hello@parliamentroof.example", phone: "613-555-0149", serviceArea: "Central Ottawa", postalPrefix: "K1Y", specialties: ["flat", "metal"], status: "approved", createdAt: new Date().toISOString() },
+
+  // ---- Vancouver (area key V6) ----
+  { id: "c13", company: "Pacific Crest Roofing", contactName: "Leo Chan", email: "leads@pacificcrest.example", phone: "604-555-0110", serviceArea: "Downtown Vancouver", postalPrefix: "V6B", specialties: ["shingles", "metal"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c14", company: "Gastown Roofers", contactName: "Maya Patel", email: "quotes@gastownroofers.example", phone: "604-555-0122", serviceArea: "Gastown", postalPrefix: "V6E", specialties: ["flat", "shingles"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c15", company: "Coastal Exteriors", contactName: "Derek Lam", email: "office@coastalext.example", phone: "604-555-0135", serviceArea: "West End", postalPrefix: "V6G", specialties: ["metal", "shingles"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c16", company: "Granville Roofing Co.", contactName: "Sophie Nguyen", email: "hello@granvilleroof.example", phone: "604-555-0147", serviceArea: "Yaletown", postalPrefix: "V6Z", specialties: ["shingles", "flat"], status: "approved", createdAt: new Date().toISOString() },
 ]
 
 const memContractors: Contractor[] = [...seedContractors]
