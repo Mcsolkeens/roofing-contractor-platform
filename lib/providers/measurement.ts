@@ -51,6 +51,17 @@ export interface MeasurementProvider {
   downloadMaterials(jobId: string): Promise<ReportFile>
 }
 
+/**
+ * EagleView's docs show PlaceOrder and GetReport returning an ARRAY that wraps a
+ * single object (e.g. `[{ OrderId, ReportIds }]`), but the live sandbox currently
+ * returns the bare OBJECT. To be robust against both (and any future flip), always
+ * unwrap: if we get an array, take the first element; otherwise use the value as-is.
+ */
+function firstOf(value: unknown): Record<string, unknown> {
+  const v = Array.isArray(value) ? value[0] : value
+  return (v ?? {}) as Record<string, unknown>
+}
+
 /** Best-effort parse of "123 Main St, City, ST 12345" into EagleView parts. */
 function parseAddress(raw: string): EagleViewAddress {
   const parts = raw.split(",").map((p) => p.trim()).filter(Boolean)
@@ -212,7 +223,9 @@ export class EagleViewProvider implements MeasurementProvider {
       const detail = await res.text().catch(() => "")
       throw new Error(`EagleView PlaceOrder failed (${res.status}). ${detail.slice(0, 300)}`)
     }
-    const data = (await res.json()) as Record<string, unknown>
+    // Docs show `[{ OrderId, ReportIds }]`; sandbox returns the bare object.
+    // firstOf() handles both.
+    const data = firstOf(await res.json())
     // EagleView responds with { OrderId, ReportIds: [<id>] }. Probe that first,
     // then fall back to older/alternate shapes for safety.
     const reportId =
@@ -238,7 +251,7 @@ export class EagleViewProvider implements MeasurementProvider {
       { headers: await this.headers() },
     )
     if (!res.ok) throw new Error(`EagleView GetReport failed (${res.status})`)
-    const data = (await res.json()) as Record<string, unknown>
+    const data = firstOf(await res.json())
     const statusRaw =
       data.status ?? data.Status ?? data.reportStatus ?? data.ReportStatus ?? data.statusId ?? data.StatusId
     return { id: jobId, status: this.mapStatus(statusRaw) }
@@ -281,7 +294,7 @@ export class EagleViewProvider implements MeasurementProvider {
    * codes return images/JSON, not the report PDF.
    */
   async downloadReport(jobId: string): Promise<ReportFile> {
-    const details = (await this.getReportDetails(jobId)) as Record<string, unknown>
+    const details = firstOf(await this.getReportDetails(jobId))
     const link =
       (details.ReportDownloadLink as string | undefined) ??
       (details.reportDownloadLink as string | undefined)
