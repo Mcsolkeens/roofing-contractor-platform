@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Image from "next/image"
 import {
   ArrowLeft,
   ArrowLeftRight,
@@ -10,8 +11,10 @@ import {
   ShieldCheck,
   CheckCircle2,
   Loader2,
+  ExternalLink,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { shingleBrands } from "@/lib/shingle-brands"
 
 type ProductType = "shingles" | "flat" | "metal"
 
@@ -44,6 +47,7 @@ export function HomeownerQuiz() {
   const [postal, setPostal] = useState("")
   const [address, setAddress] = useState("")
   const [product, setProduct] = useState<ProductType | null>(null)
+  const [brand, setBrand] = useState<string | null>(null)
   const [color, setColor] = useState<string | null>(null)
   const [email, setEmail] = useState("")
   const [submitted, setSubmitted] = useState(false)
@@ -76,6 +80,18 @@ export function HomeownerQuiz() {
     }
   }
 
+  // Build a readable "color" string for the report/admin email. For shingles it
+  // includes the chosen IKO brand + color; for flat/metal it's the color label.
+  function resolveColorLabel(): string {
+    if (product === "shingles") {
+      const b = shingleBrands.find((x) => x.id === brand)
+      const c = b?.colors.find((x) => x.id === color)
+      if (b && c) return `${b.name} — ${c.label}`
+      return b?.name ?? ""
+    }
+    return colorOptions.find((o) => o.id === color)?.label ?? color ?? ""
+  }
+
   async function submitRequest() {
     setSubmitting(true)
     try {
@@ -86,7 +102,7 @@ export function HomeownerQuiz() {
           postalCode: postal,
           address: address || postal,
           product,
-          color,
+          color: resolveColorLabel(),
           homeownerEmail: email || undefined,
           contractorIds: selectedIds,
         }),
@@ -110,6 +126,7 @@ export function HomeownerQuiz() {
     setPostal("")
     setAddress("")
     setProduct(null)
+    setBrand(null)
     setColor(null)
     setEmail("")
     setSubmitted(false)
@@ -229,7 +246,11 @@ export function HomeownerQuiz() {
                           <button
                             key={opt.id}
                             type="button"
-                            onClick={() => setProduct(opt.id)}
+                            onClick={() => {
+                              setProduct(opt.id)
+                              setBrand(null)
+                              setColor(null)
+                            }}
                             className={`rounded-xl border p-4 text-left transition-all ${
                               active
                                 ? "border-primary bg-primary/5 ring-2 ring-primary/30"
