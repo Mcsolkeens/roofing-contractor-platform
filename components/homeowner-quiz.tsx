@@ -281,8 +281,149 @@ export function HomeownerQuiz() {
                   </div>
                 )}
 
-                {/* Step 2 — color */}
-                {step === 2 && (
+                {/* Step 2 — shingles: pick a brand + IKO-style color palette */}
+                {step === 2 && product === "shingles" && (() => {
+                  const activeBrand = shingleBrands.find((b) => b.id === brand) ?? null
+                  const activeColor = activeBrand?.colors.find((c) => c.id === color) ?? null
+                  const previewColor = activeColor ?? activeBrand?.colors[0] ?? null
+                  return (
+                    <div>
+                      <h3 className="font-heading text-2xl font-bold">Pick a brand</h3>
+                      <p className="mt-2 text-muted-foreground">
+                        Two premium IKO shingle lines to choose from.
+                      </p>
+
+                      <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        {shingleBrands.map((b) => {
+                          const active = brand === b.id
+                          return (
+                            <button
+                              key={b.id}
+                              type="button"
+                              onClick={() => {
+                                setBrand(b.id)
+                                setColor(null)
+                              }}
+                              className={`flex flex-col rounded-xl border p-3 text-left transition-all ${
+                                active
+                                  ? "border-primary ring-2 ring-primary/30"
+                                  : "border-border hover:border-foreground/30"
+                              }`}
+                            >
+                              <span className="relative block aspect-[4/3] w-full overflow-hidden rounded-lg border border-border">
+                                <Image
+                                  src={b.hero || "/placeholder.svg"}
+                                  alt={`${b.name} shingles`}
+                                  fill
+                                  sizes="(max-width: 640px) 100vw, 300px"
+                                  className="object-cover"
+                                />
+                              </span>
+                              <span className="mt-3 flex items-center justify-between gap-2">
+                                <span className="font-heading text-sm font-bold leading-tight">{b.name}</span>
+                                {active && <Check className="h-4 w-4 shrink-0 text-primary" />}
+                              </span>
+                              <span className="mt-1 text-xs leading-relaxed text-muted-foreground">{b.tagline}</span>
+                              <span
+                                onClick={(e) => e.stopPropagation()}
+                                className="mt-2 inline-flex w-fit items-center gap-1 text-xs font-medium text-accent hover:underline"
+                              >
+                                <a href={b.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1">
+                                  View on iko.com <ExternalLink className="h-3 w-3" />
+                                </a>
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+
+                      {/* Color palette — appears once a brand is chosen (IKO concept) */}
+                      {activeBrand && (
+                        <div className="mt-6 rounded-xl border border-border p-3">
+                          <p className="text-sm font-medium">
+                            Choose a color <span className="font-normal text-muted-foreground">(optional)</span>
+                          </p>
+                          <div className="mt-3 flex flex-col gap-4 sm:flex-row">
+                            <div className="sm:w-2/5">
+                              <div className="relative aspect-square w-full overflow-hidden rounded-lg border border-border">
+                                {previewColor && (
+                                  <Image
+                                    src={previewColor.image || "/placeholder.svg"}
+                                    alt={`${activeBrand.name} in ${previewColor.label}`}
+                                    fill
+                                    sizes="(max-width: 640px) 100vw, 240px"
+                                    className="object-cover"
+                                  />
+                                )}
+                              </div>
+                              <p className="mt-2 text-center text-sm font-medium">
+                                {previewColor?.label}
+                              </p>
+                            </div>
+                            <div className="grid flex-1 grid-cols-4 gap-2 sm:grid-cols-4">
+                              {activeBrand.colors.map((c) => {
+                                const active = color === c.id
+                                return (
+                                  <button
+                                    key={c.id}
+                                    type="button"
+                                    onClick={() => setColor(c.id)}
+                                    title={c.label}
+                                    aria-label={c.label}
+                                    className={`relative aspect-square overflow-hidden rounded-md border transition-all ${
+                                      active
+                                        ? "border-primary ring-2 ring-primary/40"
+                                        : "border-border hover:border-foreground/40"
+                                    }`}
+                                    style={{ backgroundColor: c.hex }}
+                                  >
+                                    <Image
+                                      src={c.image || "/placeholder.svg"}
+                                      alt={c.label}
+                                      fill
+                                      sizes="80px"
+                                      className="object-cover"
+                                    />
+                                    {active && (
+                                      <span className="absolute inset-0 flex items-center justify-center bg-primary/20">
+                                        <Check className="h-4 w-4 text-primary-foreground drop-shadow" />
+                                      </span>
+                                    )}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="mt-6 flex gap-3">
+                        <Button variant="outline" onClick={back} className="h-12 px-4">
+                          <ArrowLeft className="h-5 w-5" />
+                        </Button>
+                        <Button
+                          onClick={goToMatches}
+                          disabled={!brand || loadingContractors}
+                          className="h-12 flex-1 bg-accent text-base text-accent-foreground hover:bg-accent/90"
+                        >
+                          {loadingContractors ? (
+                            <>
+                              <Loader2 className="mr-1 h-5 w-5 animate-spin" /> Finding roofers…
+                            </>
+                          ) : (
+                            <>
+                              See my matches
+                              <ArrowRight className="ml-1 h-5 w-5" />
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* Step 2 — flat/metal: pick a color (unchanged flow) */}
+                {step === 2 && product !== "shingles" && (
                   <div>
                     <h3 className="font-heading text-2xl font-bold">Pick a color</h3>
                     <p className="mt-2 text-muted-foreground">
