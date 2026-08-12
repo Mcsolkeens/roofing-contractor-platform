@@ -58,6 +58,19 @@ export async function POST(req: Request) {
     )
   }
 
+  // Optional profile details. Keep the logo data URL to a sane size so we don't
+  // store multi-MB payloads; the client also caps the file before uploading.
+  const description =
+    typeof body.description === "string" ? body.description.trim().slice(0, 1000) : undefined
+  const yearEstablished =
+    Number.isFinite(Number(body.yearEstablished)) && Number(body.yearEstablished) > 1800
+      ? Math.floor(Number(body.yearEstablished))
+      : undefined
+  const logoUrl =
+    typeof body.logoUrl === "string" && body.logoUrl.startsWith("data:image/") && body.logoUrl.length < 1_500_000
+      ? body.logoUrl
+      : undefined
+
   const repo = getContractorRepository()
   const contractor = await repo.create({
     company: body.company,
@@ -67,6 +80,9 @@ export async function POST(req: Request) {
     serviceArea: body.serviceArea,
     postalPrefix: fsa,
     specialties: body.specialties ?? [],
+    description,
+    yearEstablished,
+    logoUrl,
   })
 
   return NextResponse.json(

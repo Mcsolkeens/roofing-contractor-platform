@@ -11,7 +11,6 @@ import {
   ShieldCheck,
   CheckCircle2,
   Loader2,
-  ExternalLink,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { shingleBrands } from "@/lib/shingle-brands"
@@ -324,14 +323,6 @@ export function HomeownerQuiz() {
                                 {active && <Check className="h-4 w-4 shrink-0 text-primary" />}
                               </span>
                               <span className="mt-1 text-xs leading-relaxed text-muted-foreground">{b.tagline}</span>
-                              <span
-                                onClick={(e) => e.stopPropagation()}
-                                className="mt-2 inline-flex w-fit items-center gap-1 text-xs font-medium text-accent hover:underline"
-                              >
-                                <a href={b.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1">
-                                  View on iko.com <ExternalLink className="h-3 w-3" />
-                                </a>
-                              </span>
                             </button>
                           )
                         })}

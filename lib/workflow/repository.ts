@@ -28,6 +28,12 @@ export interface Contractor {
   serviceArea?: string
   postalPrefix?: string
   specialties: string[]
+  /** Short "about us" / company description shown on the profile. */
+  description?: string
+  /** Year the company was established, e.g. 2008. */
+  yearEstablished?: number
+  /** Company logo as a data URL (uploaded on the application form). */
+  logoUrl?: string
   status: ContractorStatus
   createdAt: string
 }
@@ -40,6 +46,9 @@ export interface ContractorInput {
   serviceArea?: string
   postalPrefix?: string
   specialties: string[]
+  description?: string
+  yearEstablished?: number
+  logoUrl?: string
 }
 
 export type RequestStatus =
