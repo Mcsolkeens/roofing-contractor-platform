@@ -85,7 +85,11 @@ function parseAddress(raw: string): EagleViewAddress {
  */
 const EAGLEVIEW_HOSTS = {
   sandbox: "https://sandbox.apicenter.eagleview.com",
-  production: "https://apis.eagleview.com",
+  // Production shares the same API surface as sandbox (same /v2, /v3, /v1 paths),
+  // just without the `sandbox.` prefix. Verified by probing: this host returns a
+  // proper auth response for our paths, whereas apis.eagleview.com returns AWS
+  // "Missing Authentication Token" (a different API surface that doesn't serve them).
+  production: "https://apicenter.eagleview.com",
 } as const
 
 export class EagleViewProvider implements MeasurementProvider {
@@ -195,7 +199,12 @@ export class EagleViewProvider implements MeasurementProvider {
     // OBJECTS, not arrays. Sending arrays makes their gateway reject the request
     // with a misleading HTTP 503 "upstream connect error" (looks like an outage
     // but is actually a malformed-payload rejection). Verified against the sandbox.
-    const body = {
+    // PromoCode is a top-level field (sibling of OrderReports) per EagleView's
+    // PlaceOrder schema. When set, EagleView discounts/zeroes the report and does
+    // NOT charge the card on file — this is how we run free test orders. Leave
+    // EAGLEVIEW_PROMO_CODE unset for a normal (charged) production order.
+    const promoCode = process.env.EAGLEVIEW_PROMO_CODE?.trim() || undefined
+    const body: Record<string, unknown> = {
       OrderReports: {
         ReportAddresses: {
           Address: addr.address,
@@ -212,6 +221,7 @@ export class EagleViewProvider implements MeasurementProvider {
         MeasurementInstructionType: 3,
         ChangesInLast4Years: false,
       },
+      ...(promoCode ? { PromoCode: promoCode } : {}),
     }
 
     const res = await this.fetchWithTimeout(`${this.baseUrl}/v2/Order/PlaceOrder`, {
