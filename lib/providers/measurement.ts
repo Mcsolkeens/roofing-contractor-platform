@@ -192,13 +192,36 @@ export class EagleViewProvider implements MeasurementProvider {
    */
   async createJob(address: string, structured?: EagleViewAddress): Promise<MeasurementJob> {
     const addr = structured ?? parseAddress(address)
-    const productId = Number(process.env.EAGLEVIEW_PRODUCT_ID ?? 106) // 106 = roof report
-    const deliveryProductId = Number(process.env.EAGLEVIEW_DELIVERY_PRODUCT_ID ?? 8)
+    // Default to product 31 = "Premium - Residential", EagleView's comprehensive
+    // roof report: 3D roof diagram (detailed drawings), all critical measurements,
+    // and a waste calculation table (materials takeoff). Verified present in the
+    // live production catalog (GetAvailableProducts). Override via env if needed.
+    const productId = Number(process.env.EAGLEVIEW_PRODUCT_ID ?? 31)
+    const deliveryProductId = Number(process.env.EAGLEVIEW_DELIVERY_PRODUCT_ID ?? 8) // 8 = Regular
+    // MeasurementInstructionType 3 is valid for product 31 (allowed: [1,2,3,5]).
+    const measurementInstructionType = Number(process.env.EAGLEVIEW_MEASUREMENT_INSTRUCTION_TYPE ?? 3)
+    const addressType = Number(process.env.EAGLEVIEW_ADDRESS_TYPE ?? 1)
 
     // IMPORTANT: EagleView expects OrderReports and ReportAddresses as single
     // OBJECTS, not arrays. Sending arrays makes their gateway reject the request
     // with a misleading HTTP 503 "upstream connect error" (looks like an outage
     // but is actually a malformed-payload rejection). Verified against the sandbox.
+    //
+    // Latitude/Longitude are typed as (non-nullable) floats in EagleView's model.
+    // Sending `null` makes their .NET model binder throw a deserialization error
+    // ("An error has occurred" on ReportAddresses), so we only include them when
+    // we actually have finite numbers — otherwise we omit them entirely.
+    const reportAddresses: Record<string, unknown> = {
+      Address: addr.address,
+      City: addr.city,
+      State: addr.state,
+      Zip: addr.zip,
+      Country: addr.country ?? "US",
+      AddressType: addressType,
+    }
+    if (Number.isFinite(addr.latitude as number)) reportAddresses.Latitude = addr.latitude
+    if (Number.isFinite(addr.longitude as number)) reportAddresses.Longitude = addr.longitude
+
     // PromoCode is a top-level field (sibling of OrderReports) per EagleView's
     // PlaceOrder schema. When set, EagleView discounts/zeroes the report and does
     // NOT charge the card on file — this is how we run free test orders. Leave
@@ -206,19 +229,10 @@ export class EagleViewProvider implements MeasurementProvider {
     const promoCode = process.env.EAGLEVIEW_PROMO_CODE?.trim() || undefined
     const body: Record<string, unknown> = {
       OrderReports: {
-        ReportAddresses: {
-          Address: addr.address,
-          City: addr.city,
-          State: addr.state,
-          Zip: addr.zip,
-          Country: addr.country ?? "US",
-          Latitude: addr.latitude ?? null,
-          Longitude: addr.longitude ?? null,
-          AddressType: 1,
-        },
+        ReportAddresses: reportAddresses,
         PrimaryProductId: productId,
         DeliveryProductId: deliveryProductId,
-        MeasurementInstructionType: 3,
+        MeasurementInstructionType: measurementInstructionType,
         ChangesInLast4Years: false,
       },
       ...(promoCode ? { PromoCode: promoCode } : {}),
