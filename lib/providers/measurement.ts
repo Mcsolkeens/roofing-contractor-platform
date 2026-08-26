@@ -223,10 +223,15 @@ export class EagleViewProvider implements MeasurementProvider {
     const measurementInstructionType = Number(process.env.EAGLEVIEW_MEASUREMENT_INSTRUCTION_TYPE ?? 3)
     const addressType = Number(process.env.EAGLEVIEW_ADDRESS_TYPE ?? 1)
 
-    // IMPORTANT: EagleView expects OrderReports and ReportAddresses as single
-    // OBJECTS, not arrays. Sending arrays makes their gateway reject the request
-    // with a misleading HTTP 503 "upstream connect error" (looks like an outage
-    // but is actually a malformed-payload rejection). Verified against the sandbox.
+    // IMPORTANT: EagleView expects OrderReports AND ReportAddresses to both be
+    // ARRAYS, despite the Swagger describing them as objects. Verified live against
+    // production /v2/Order/PriceOrder — only the array/array shape returns HTTP 200:
+    //   OrderReports object + ReportAddresses object -> 400 ReportAddresses "An error has occurred"
+    //   OrderReports object + ReportAddresses array  -> 400 (same)
+    //   OrderReports array  + ReportAddresses object -> 400 ReportAddresses required
+    //   OrderReports array  + ReportAddresses array  -> 200 + price quote
+    // The parent-says-"required"/child-says-"An error has occurred" pair is the
+    // giveaway: their model binder fails on the nested type, nulling the parent.
     //
     // Latitude/Longitude are typed as (non-nullable) floats in EagleView's model.
     // Sending `null` makes their .NET model binder throw a deserialization error
@@ -249,16 +254,21 @@ export class EagleViewProvider implements MeasurementProvider {
     // EAGLEVIEW_PROMO_CODE unset for a normal (charged) production order.
     const promoCode = process.env.EAGLEVIEW_PROMO_CODE?.trim() || undefined
     const body: Record<string, unknown> = {
-      OrderReports: {
-        ReportAddresses: reportAddresses,
-        PrimaryProductId: productId,
-        DeliveryProductId: deliveryProductId,
-        MeasurementInstructionType: measurementInstructionType,
-        ChangesInLast4Years: false,
-        // Only sent when the scope actually needs an add-on (siding). Omitted
-        // entirely otherwise so a plain roof order stays byte-identical to before.
-        ...(addOnProductIds.length ? { AddOnProductIds: addOnProductIds } : {}),
-      },
+      OrderReports: [
+        {
+          ReportAddresses: [reportAddresses],
+          PrimaryProductId: productId,
+          DeliveryProductId: deliveryProductId,
+          MeasurementInstructionType: measurementInstructionType,
+          ChangesInLast4Years: false,
+          // Must be `AddOnProductIds` (an int array). `AddOnProducts` is silently
+          // IGNORED by EagleView — the quote comes back at the base price with
+          // AddOnProductPriceQuotes: null, so the add-on would never be ordered.
+          // Verified live: [87] moves the quote from $47.25 to $157.50.
+          // Only sent when the scope needs an add-on (siding).
+          ...(addOnProductIds.length ? { AddOnProductIds: addOnProductIds } : {}),
+        },
+      ],
       ...(promoCode ? { PromoCode: promoCode } : {}),
     }
 
