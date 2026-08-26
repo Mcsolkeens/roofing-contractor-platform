@@ -8,6 +8,7 @@
  */
 
 import { generateReportPdf, generateMaterialsPdf } from "@/lib/mock-report"
+import { resolveEagleViewProducts } from "@/lib/quote-scope"
 
 export type MeasurementStatus = "pending" | "in_progress" | "ready" | "failed"
 
@@ -43,9 +44,22 @@ export interface EagleViewAddress {
   longitude?: number | null
 }
 
+/** Per-order options that don't belong to the address itself. */
+export interface CreateJobOptions {
+  /**
+   * What the homeowner wants quoted. Resolved into EagleView's
+   * PrimaryProductId + AddOnProductIds by lib/quote-scope.
+   */
+  scopes?: string[]
+}
+
 export interface MeasurementProvider {
   readonly name: string
-  createJob(address: string, structured?: EagleViewAddress): Promise<MeasurementJob>
+  createJob(
+    address: string,
+    structured?: EagleViewAddress,
+    options?: CreateJobOptions,
+  ): Promise<MeasurementJob>
   getStatus(jobId: string): Promise<MeasurementJobStatus>
   downloadReport(jobId: string): Promise<ReportFile>
   downloadMaterials(jobId: string): Promise<ReportFile>
@@ -190,13 +204,20 @@ export class EagleViewProvider implements MeasurementProvider {
    * addresses. `structured` lets callers pass the exact address parts; otherwise
    * we do a best-effort parse of a single-line address string.
    */
-  async createJob(address: string, structured?: EagleViewAddress): Promise<MeasurementJob> {
+  async createJob(
+    address: string,
+    structured?: EagleViewAddress,
+    options?: CreateJobOptions,
+  ): Promise<MeasurementJob> {
     const addr = structured ?? parseAddress(address)
-    // Default to product 31 = "Premium - Residential", EagleView's comprehensive
-    // roof report: 3D roof diagram (detailed drawings), all critical measurements,
-    // and a waste calculation table (materials takeoff). Verified present in the
-    // live production catalog (GetAvailableProducts). Override via env if needed.
-    const productId = Number(process.env.EAGLEVIEW_PRODUCT_ID ?? 31)
+    // The homeowner's quote scope picks the products. Base is product 31 =
+    // "Premium - Residential", EagleView's comprehensive roof report: 3D roof
+    // diagram (detailed drawings), all critical measurements, and a waste
+    // calculation table (materials takeoff). Verified present in the live
+    // production catalog (GetAvailableProducts). Including siding in the scope
+    // adds the siding add-on; every other combination orders the plain report.
+    const { primaryProductId, addOnProductIds } = resolveEagleViewProducts(options?.scopes)
+    const productId = primaryProductId
     const deliveryProductId = Number(process.env.EAGLEVIEW_DELIVERY_PRODUCT_ID ?? 8) // 8 = Regular
     // MeasurementInstructionType 3 is valid for product 31 (allowed: [1,2,3,5]).
     const measurementInstructionType = Number(process.env.EAGLEVIEW_MEASUREMENT_INSTRUCTION_TYPE ?? 3)
@@ -234,6 +255,9 @@ export class EagleViewProvider implements MeasurementProvider {
         DeliveryProductId: deliveryProductId,
         MeasurementInstructionType: measurementInstructionType,
         ChangesInLast4Years: false,
+        // Only sent when the scope actually needs an add-on (siding). Omitted
+        // entirely otherwise so a plain roof order stays byte-identical to before.
+        ...(addOnProductIds.length ? { AddOnProductIds: addOnProductIds } : {}),
       },
       ...(promoCode ? { PromoCode: promoCode } : {}),
     }

@@ -6,10 +6,18 @@ export const runtime = "nodejs"
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { postalCode, product, color, address, homeownerEmail, contractorIds } = body ?? {}
+    const { postalCode, product, color, address, homeownerEmail, contractorIds, scopes } =
+      body ?? {}
 
     if (!postalCode || !product) {
       return NextResponse.json({ error: "postalCode and product are required" }, { status: 400 })
+    }
+
+    // `scopes` decides which EagleView report + add-ons get ordered. Trust only
+    // the ids we recognise; normalizeScopes() runs inside the workflow/provider.
+    const rawScopes = Array.isArray(scopes) ? scopes.filter((s) => typeof s === "string") : []
+    if (rawScopes.length === 0) {
+      return NextResponse.json({ error: "at least one scope is required" }, { status: 400 })
     }
 
     await startMeasurementRequest({
@@ -17,6 +25,7 @@ export async function POST(request: Request) {
       postalCode,
       product,
       color: color ?? "",
+      scopes: rawScopes,
       homeownerEmail,
       contractorIds: Array.isArray(contractorIds) ? contractorIds : undefined,
     })

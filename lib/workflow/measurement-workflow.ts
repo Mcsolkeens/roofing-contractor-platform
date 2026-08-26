@@ -33,6 +33,11 @@ export interface StartRequestInput {
   postalCode: string
   product: string
   color: string
+  /**
+   * What the homeowner wants quoted (roof / siding / soffit / fascia /
+   * eavestrough). Decides the EagleView report + add-ons — see lib/quote-scope.
+   */
+  scopes?: string[]
   homeownerEmail?: string
   /** Optional homeowner-selected contractors; falls back to nearest approved. */
   contractorIds?: string[]
@@ -66,12 +71,17 @@ export async function startMeasurementRequest(input: StartRequestInput): Promise
 
   // 3. Order the measurement (provider-agnostic). Pass structured parts so the
   //    provider (and the mock PDF) can use the postal code.
-  const job = await measurement.createJob(input.address, {
-    address: input.address,
-    city: "",
-    state: "",
-    zip: input.postalCode,
-  })
+  const job = await measurement.createJob(
+    input.address,
+    {
+      address: input.address,
+      city: "",
+      state: "",
+      zip: input.postalCode,
+    },
+    // Scope decides the report/add-ons the provider orders.
+    { scopes: input.scopes },
+  )
   annotateMockJob(job.id, {
     address: input.address,
     postalCode: input.postalCode,
