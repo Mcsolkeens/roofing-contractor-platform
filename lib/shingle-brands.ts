@@ -10,7 +10,9 @@
  * intentionally not offered). Colour NAMES and COUNTS are taken directly from
  * bpcan.com, and each `hex` is the averaged pixel colour sampled from that
  * colour's own swatch image on BP's product page — not an assumed palette.
- * BP colours have no local imagery, so the form renders them as hex swatches.
+ * Every BP colour also has a real shingle close-up mirrored from bpcan.com into
+ * /public/shingles/<line>/, so BP renders actual roof imagery exactly like IKO
+ * (the `hex` now only acts as a loading/fallback tint behind the photo).
  *   Signature: 12 colours  https://bpcan.com/produits/signature-east/
  *   Mystique:   9 colours  https://bpcan.com/produits/mystique-shingles/
  */
@@ -19,7 +21,7 @@ export interface ShingleColor {
   id: string
   label: string
   hex: string
-  /** Optional close-up photo. Absent for BP, which renders as a hex swatch. */
+  /** Close-up shingle photo. Set for every IKO and BP colour. */
   image?: string
 }
 
@@ -92,19 +94,20 @@ export const manufacturers: Manufacturer[] = [
         name: "Signature",
         tagline: "220 km/h wind warranty, Class 3 impact, 12 curated designer colours.",
         url: "https://bpcan.com/produits/signature-east/",
+        hero: "/shingles/signature/arabica.webp",
         colors: [
-          { id: "arabica", label: "Arabica", hex: "#342f2d" },
-          { id: "mesquite", label: "Mesquite", hex: "#523f35" },
-          { id: "criollo", label: "Criollo", hex: "#333033" },
-          { id: "fjord", label: "Fjord", hex: "#605e5c" },
-          { id: "cumin", label: "Cumin", hex: "#292727" },
-          { id: "dublin", label: "Dublin", hex: "#615650" },
-          { id: "muskoka", label: "Muskoka", hex: "#4c4944" },
-          { id: "cortina", label: "Cortina", hex: "#565251" },
-          { id: "newport", label: "Newport", hex: "#636160" },
-          { id: "quinoa", label: "Quinoa", hex: "#5c4d42" },
-          { id: "soho", label: "Soho", hex: "#3f3937" },
-          { id: "toscana", label: "Toscana", hex: "#5f4e43" },
+          { id: "arabica", label: "Arabica", hex: "#342f2d", image: "/shingles/signature/arabica.webp" },
+          { id: "mesquite", label: "Mesquite", hex: "#523f35", image: "/shingles/signature/mesquite.webp" },
+          { id: "criollo", label: "Criollo", hex: "#333033", image: "/shingles/signature/criollo.webp" },
+          { id: "fjord", label: "Fjord", hex: "#605e5c", image: "/shingles/signature/fjord.webp" },
+          { id: "cumin", label: "Cumin", hex: "#292727", image: "/shingles/signature/cumin.webp" },
+          { id: "dublin", label: "Dublin", hex: "#615650", image: "/shingles/signature/dublin.webp" },
+          { id: "muskoka", label: "Muskoka", hex: "#4c4944", image: "/shingles/signature/muskoka.webp" },
+          { id: "cortina", label: "Cortina", hex: "#565251", image: "/shingles/signature/cortina.webp" },
+          { id: "newport", label: "Newport", hex: "#636160", image: "/shingles/signature/newport.webp" },
+          { id: "quinoa", label: "Quinoa", hex: "#5c4d42", image: "/shingles/signature/quinoa.webp" },
+          { id: "soho", label: "Soho", hex: "#3f3937", image: "/shingles/signature/soho.webp" },
+          { id: "toscana", label: "Toscana", hex: "#5f4e43", image: "/shingles/signature/toscana.webp" },
         ],
       },
       {
@@ -112,16 +115,17 @@ export const manufacturers: Manufacturer[] = [
         name: "Mystique",
         tagline: "Affordable double-layer laminate shingle that protects resale value.",
         url: "https://bpcan.com/produits/mystique-shingles/",
+        hero: "/shingles/mystique/slate-grey.png",
         colors: [
-          { id: "slate-grey", label: "Slate Grey", hex: "#6f7571" },
-          { id: "rustic-cedar", label: "Rustic Cedar", hex: "#726557" },
-          { id: "classic-brown", label: "Classic Brown", hex: "#61524f" },
-          { id: "barkwood", label: "Barkwood", hex: "#756b64" },
-          { id: "antique-slate", label: "Antique Slate", hex: "#74706c" },
-          { id: "2-tone-brown", label: "2-Tone Brown", hex: "#75594f" },
-          { id: "2-tone-black", label: "2-Tone Black", hex: "#565558" },
-          { id: "morning-mist", label: "Morning Mist", hex: "#7b7a7e" },
-          { id: "sangria", label: "Sangria", hex: "#473330" },
+          { id: "slate-grey", label: "Slate Grey", hex: "#6f7571", image: "/shingles/mystique/slate-grey.png" },
+          { id: "rustic-cedar", label: "Rustic Cedar", hex: "#726557", image: "/shingles/mystique/rustic-cedar.png" },
+          { id: "classic-brown", label: "Classic Brown", hex: "#61524f", image: "/shingles/mystique/classic-brown.png" },
+          { id: "barkwood", label: "Barkwood", hex: "#756b64", image: "/shingles/mystique/barkwood.png" },
+          { id: "antique-slate", label: "Antique Slate", hex: "#74706c", image: "/shingles/mystique/antique-slate.png" },
+          { id: "2-tone-brown", label: "2-Tone Brown", hex: "#75594f", image: "/shingles/mystique/2-tone-brown.png" },
+          { id: "2-tone-black", label: "2-Tone Black", hex: "#565558", image: "/shingles/mystique/2-tone-black.png" },
+          { id: "morning-mist", label: "Morning Mist", hex: "#7b7a7e", image: "/shingles/mystique/morning-mist.jpg" },
+          { id: "sangria", label: "Sangria", hex: "#473330", image: "/shingles/mystique/sangria.jpg" },
         ],
       },
     ],
