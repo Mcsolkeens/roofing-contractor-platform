@@ -8,13 +8,13 @@ const steps = [
   },
   {
     icon: Users,
-    title: "See who's available nearby",
-    desc: "We show you a short list of roofing companies close to you that we've already checked out. Look through them and pick the ones you like.",
+    title: "Pick roofers near you",
+    desc: "We show you a short list of roofing companies close to you that we've already checked out. Tell us which ones you'd like quotes from.",
   },
   {
     icon: Hammer,
-    title: "Talk to roofers on your terms",
-    desc: "The companies you picked get in touch with a quote, usually within a day or two. Compare them, ask questions, and hire whoever feels right.",
+    title: "We take it from here",
+    desc: "Our team pulls a precise roof measurement for your property and lines up your quotes. We'll reach out with everything, usually within a day or two.",
   },
 ]
 

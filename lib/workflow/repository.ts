@@ -28,6 +28,12 @@ export interface Contractor {
   serviceArea?: string
   postalPrefix?: string
   specialties: string[]
+  /** Short "about us" / company description shown on the profile. */
+  description?: string
+  /** Year the company was established, e.g. 2008. */
+  yearEstablished?: number
+  /** Company logo as a data URL (uploaded on the application form). */
+  logoUrl?: string
   status: ContractorStatus
   createdAt: string
 }
@@ -40,6 +46,9 @@ export interface ContractorInput {
   serviceArea?: string
   postalPrefix?: string
   specialties: string[]
+  description?: string
+  yearEstablished?: number
+  logoUrl?: string
 }
 
 export type RequestStatus =
@@ -91,19 +100,55 @@ export interface MeasurementRequestRepository {
   listInProgress(): Promise<MeasurementRequest[]>
 }
 
-function postalPrefixOf(postal: string): string {
-  return postal.trim().charAt(0).toUpperCase()
+/**
+ * Normalized Forward Sortation Area — the first 3 chars of a Canadian postal
+ * code (e.g. "P3E 2C6" -> "P3E"). The FSA identifies a specific geographic area.
+ */
+export function normalizeFsa(postal: string): string {
+  return postal.replace(/\s+/g, "").toUpperCase().slice(0, 3)
+}
+
+/**
+ * Metro/city "area key" = the letter+digit portion of the FSA (e.g. "P3" =
+ * Greater Sudbury, "M5" = downtown Toronto). This is the granularity we match
+ * on: precise enough to separate cities, broad enough to cover a whole metro.
+ */
+function areaKey(postal: string): string {
+  return normalizeFsa(postal).slice(0, 2)
 }
 
 /* ================================================================== */
 /* In-memory implementation                                            */
 /* ================================================================== */
 
+// Four approved contractors in each of four metros so the end-to-end flow can be
+// tested anywhere. Matching is by "area key" = first 2 chars of the FSA
+// (M5 = downtown Toronto, P3 = Greater Sudbury, K1 = central Ottawa,
+// V6 = Vancouver). Any postal code in one of these areas returns these companies.
 const seedContractors: Contractor[] = [
-  { id: "c1", company: "Summit Roofing Co.", contactName: "Dave Nguyen", email: "leads@summitroofing.example", phone: "416-555-0110", serviceArea: "Toronto & GTA", postalPrefix: "M", specialties: ["shingles", "metal"], status: "approved", createdAt: new Date().toISOString() },
-  { id: "c2", company: "Maple Leaf Exteriors", contactName: "Sarah Bianchi", email: "quotes@mapleleaf.example", phone: "416-555-0134", serviceArea: "Toronto core", postalPrefix: "M", specialties: ["shingles", "flat"], status: "approved", createdAt: new Date().toISOString() },
-  { id: "c3", company: "Northern Peak Roofers", contactName: "Tom Reyes", email: "hello@northernpeak.example", phone: "905-555-0177", serviceArea: "North York, Vaughan", postalPrefix: "M", specialties: ["metal"], status: "pending", createdAt: new Date().toISOString() },
-  { id: "c4", company: "TrueLine Roofing", contactName: "Priya Shah", email: "office@trueline.example", phone: "905-555-0199", serviceArea: "Mississauga, Oakville", postalPrefix: "L", specialties: ["shingles", "flat", "metal"], status: "pending", createdAt: new Date().toISOString() },
+  // ---- Toronto (area key M5) ----
+  { id: "c1", company: "Summit Roofing Co.", contactName: "Dave Nguyen", email: "leads@summitroofing.example", phone: "416-555-0110", serviceArea: "Downtown Toronto", postalPrefix: "M5V", specialties: ["shingles", "metal"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c2", company: "Maple Leaf Exteriors", contactName: "Sarah Bianchi", email: "quotes@mapleleaf.example", phone: "416-555-0134", serviceArea: "Downtown Toronto", postalPrefix: "M5H", specialties: ["shingles", "flat"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c3", company: "Lakeshore Roofing", contactName: "Marco Silva", email: "info@lakeshoreroof.example", phone: "416-555-0142", serviceArea: "Toronto Waterfront", postalPrefix: "M5A", specialties: ["shingles", "metal"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c4", company: "Harbourfront Exteriors", contactName: "Amy Wong", email: "hello@harbourfront.example", phone: "416-555-0188", serviceArea: "Central Toronto", postalPrefix: "M5T", specialties: ["flat", "metal"], status: "approved", createdAt: new Date().toISOString() },
+
+  // ---- Greater Sudbury (area key P3) ----
+  { id: "c5", company: "Northern Peak Roofers", contactName: "Tom Reyes", email: "hello@northernpeak.example", phone: "705-555-0177", serviceArea: "Greater Sudbury", postalPrefix: "P3A", specialties: ["metal", "shingles"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c6", company: "Nickel City Roofing", contactName: "Julie Tremblay", email: "quotes@nickelcityroof.example", phone: "705-555-0181", serviceArea: "Sudbury", postalPrefix: "P3B", specialties: ["shingles", "flat"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c7", company: "Laurentian Exteriors", contactName: "Ken Blais", email: "office@laurentianext.example", phone: "705-555-0193", serviceArea: "Sudbury South", postalPrefix: "P3C", specialties: ["shingles", "metal"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c8", company: "Boreal Roofing Co.", contactName: "Rita Cormier", email: "info@borealroof.example", phone: "705-555-0166", serviceArea: "New Sudbury", postalPrefix: "P3E", specialties: ["metal", "flat"], status: "approved", createdAt: new Date().toISOString() },
+
+  // ---- Ottawa (area key K1) ----
+  { id: "c9", company: "Capital Roofing", contactName: "Sam Okoye", email: "leads@capitalroofing.example", phone: "613-555-0110", serviceArea: "Downtown Ottawa", postalPrefix: "K1P", specialties: ["shingles", "metal"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c10", company: "Rideau Roofers", contactName: "Claire Dubois", email: "quotes@rideauroofers.example", phone: "613-555-0124", serviceArea: "Rideau, Ottawa", postalPrefix: "K1N", specialties: ["shingles", "flat"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c11", company: "ByWard Exteriors", contactName: "Hassan Ali", email: "office@bywardext.example", phone: "613-555-0137", serviceArea: "ByWard Market", postalPrefix: "K1S", specialties: ["metal", "shingles"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c12", company: "Parliament Roofing", contactName: "Nina Roy", email: "hello@parliamentroof.example", phone: "613-555-0149", serviceArea: "Central Ottawa", postalPrefix: "K1Y", specialties: ["flat", "metal"], status: "approved", createdAt: new Date().toISOString() },
+
+  // ---- Vancouver (area key V6) ----
+  { id: "c13", company: "Pacific Crest Roofing", contactName: "Leo Chan", email: "leads@pacificcrest.example", phone: "604-555-0110", serviceArea: "Downtown Vancouver", postalPrefix: "V6B", specialties: ["shingles", "metal"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c14", company: "Gastown Roofers", contactName: "Maya Patel", email: "quotes@gastownroofers.example", phone: "604-555-0122", serviceArea: "Gastown", postalPrefix: "V6E", specialties: ["flat", "shingles"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c15", company: "Coastal Exteriors", contactName: "Derek Lam", email: "office@coastalext.example", phone: "604-555-0135", serviceArea: "West End", postalPrefix: "V6G", specialties: ["metal", "shingles"], status: "approved", createdAt: new Date().toISOString() },
+  { id: "c16", company: "Granville Roofing Co.", contactName: "Sophie Nguyen", email: "hello@granvilleroof.example", phone: "604-555-0147", serviceArea: "Yaletown", postalPrefix: "V6Z", specialties: ["shingles", "flat"], status: "approved", createdAt: new Date().toISOString() },
 ]
 
 const memContractors: Contractor[] = [...seedContractors]
@@ -138,13 +183,20 @@ export class InMemoryContractorRepository implements ContractorRepository {
   }
 
   async findNearest(postalCode: string, limit: number): Promise<Contractor[]> {
-    const prefix = postalPrefixOf(postalCode)
+    const area = areaKey(postalCode)
+    const fsa = normalizeFsa(postalCode)
+    if (area.length < 2) return []
     const approved = memContractors.filter((c) => c.status === "approved")
-    const inArea = approved.filter((c) => c.postalPrefix === prefix)
-    const ranked = inArea.length
-      ? [...inArea, ...approved.filter((c) => !inArea.includes(c))]
-      : approved
-    return ranked.slice(0, limit)
+    // Only contractors serving the same metro area. No broad fallback: an area
+    // with no approved company returns nothing (the UI shows "none yet").
+    const inArea = approved.filter((c) => areaKey(c.postalPrefix ?? "") === area)
+    // Exact FSA matches rank first, then the rest of the metro area.
+    inArea.sort((a, b) => {
+      const aExact = normalizeFsa(a.postalPrefix ?? "") === fsa ? 0 : 1
+      const bExact = normalizeFsa(b.postalPrefix ?? "") === fsa ? 0 : 1
+      return aExact - bExact
+    })
+    return inArea.slice(0, limit)
   }
 
   async findByIds(ids: string[]): Promise<Contractor[]> {
@@ -216,6 +268,8 @@ interface ContractorRow {
   specialties: string[]
   status: ContractorStatus
   created_at: Date
+  // Index signature so this satisfies pg's QueryResultRow constraint.
+  [key: string]: unknown
 }
 
 function mapContractor(r: ContractorRow): Contractor {
@@ -277,14 +331,19 @@ export class DbContractorRepository implements ContractorRepository {
   }
 
   async findNearest(postalCode: string, limit: number): Promise<Contractor[]> {
-    const prefix = postalPrefixOf(postalCode)
-    // Approved contractors in the same area first, then any approved company.
+    const area = areaKey(postalCode) // e.g. "P3"
+    const fsa = normalizeFsa(postalCode) // e.g. "P3E"
+    if (area.length < 2) return []
+    // Only approved contractors whose service area (FSA) is in the same metro
+    // area (letter+digit). No broad fallback — an unserved area returns none.
+    // Exact FSA matches are ranked first.
     const { rows } = await query<ContractorRow>(
       `SELECT * FROM contractors
        WHERE status = 'approved'
-       ORDER BY (postal_prefix = $1) DESC, created_at DESC
-       LIMIT $2`,
-      [prefix, limit],
+         AND UPPER(LEFT(postal_prefix, 2)) = $1
+       ORDER BY (UPPER(LEFT(postal_prefix, 3)) = $2) DESC, created_at DESC
+       LIMIT $3`,
+      [area, fsa, limit],
     )
     return rows.map(mapContractor)
   }
@@ -312,6 +371,8 @@ interface RequestRow {
   report_url: string | null
   materials_url: string | null
   created_at: Date
+  // Index signature so this satisfies pg's QueryResultRow constraint.
+  [key: string]: unknown
 }
 
 async function mapRequest(r: RequestRow): Promise<MeasurementRequest> {
@@ -438,10 +499,50 @@ function useAurora(): boolean {
   return Boolean(process.env.DATABASE_URL)
 }
 
+/**
+ * Once a database call fails (e.g. Aurora IAM/OIDC not yet trusted by AWS), we
+ * remember it for the lifetime of this process and route straight to the
+ * in-memory store — so the site keeps working instead of 500ing. Serverless
+ * cold starts reset this flag, so the DB is automatically retried once the AWS
+ * trust policy is fixed; no redeploy needed.
+ */
+let dbUnavailable = false
+
+/**
+ * Wraps a database repository so any failing async method transparently falls
+ * back to an in-memory implementation. Keeps production functional while the
+ * Aurora connection is being provisioned.
+ */
+function withFallback<T extends object>(primary: T, fallback: T): T {
+  return new Proxy(primary, {
+    get(target, prop, receiver) {
+      const primaryValue = Reflect.get(target, prop, receiver)
+      if (typeof primaryValue !== "function") return primaryValue
+      const fallbackValue = Reflect.get(fallback, prop, fallback)
+      return async (...args: unknown[]) => {
+        if (dbUnavailable) {
+          return (fallbackValue as (...a: unknown[]) => unknown).apply(fallback, args)
+        }
+        try {
+          return await (primaryValue as (...a: unknown[]) => Promise<unknown>).apply(target, args)
+        } catch (err) {
+          dbUnavailable = true
+          console.log(
+            `[v0] Database unavailable (${String(prop)}): ${(err as Error).message}. Falling back to in-memory store.`,
+          )
+          return (fallbackValue as (...a: unknown[]) => unknown).apply(fallback, args)
+        }
+      }
+    },
+  })
+}
+
 export function getContractorRepository(): ContractorRepository {
-  return useAurora() ? new DbContractorRepository() : new InMemoryContractorRepository()
+  if (!useAurora()) return new InMemoryContractorRepository()
+  return withFallback(new DbContractorRepository(), new InMemoryContractorRepository())
 }
 
 export function getMeasurementRequestRepository(): MeasurementRequestRepository {
-  return useAurora() ? new DbMeasurementRequestRepository() : new InMemoryMeasurementRequestRepository()
+  if (!useAurora()) return new InMemoryMeasurementRequestRepository()
+  return withFallback(new DbMeasurementRequestRepository(), new InMemoryMeasurementRequestRepository())
 }

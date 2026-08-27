@@ -105,6 +105,48 @@ export class S3StorageProvider implements StorageProvider {
 /* Factory                                                             */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Wraps a primary storage provider so that if a write fails (e.g. Aurora IAM/
+ * OIDC not yet trusted by AWS), we transparently fall back to the in-memory
+ * store. This keeps the report-generation + email flow working even when the
+ * database is unreachable — critically, storing PDFs must never block the
+ * RoofPitch notification email, since the email carries the PDFs as attachments
+ * (from in-memory buffers) and does not depend on the stored copy.
+ */
+class FallbackStorageProvider implements StorageProvider {
+  readonly name: string
+  private unavailable = false
+  constructor(
+    private primary: StorageProvider,
+    private fallback: StorageProvider,
+  ) {
+    this.name = primary.name
+  }
+
+  async put(key: string, file: { base64: string; contentType: string }): Promise<StoredObject> {
+    if (this.unavailable) return this.fallback.put(key, file)
+    try {
+      return await this.primary.put(key, file)
+    } catch (err) {
+      this.unavailable = true
+      console.log(
+        `[v0] Storage unavailable (${this.primary.name}): ${(err as Error).message}. Falling back to in-memory store.`,
+      )
+      return this.fallback.put(key, file)
+    }
+  }
+
+  async getUrl(key: string): Promise<string> {
+    if (this.unavailable) return this.fallback.getUrl(key)
+    try {
+      return await this.primary.getUrl(key)
+    } catch {
+      this.unavailable = true
+      return this.fallback.getUrl(key)
+    }
+  }
+}
+
 export function getStorageProvider(): StorageProvider {
   // Default: follow the data driver. Aurora deployments persist PDFs in the DB;
   // everything else uses the in-process memory store. STORAGE_PROVIDER overrides.
@@ -114,7 +156,9 @@ export function getStorageProvider(): StorageProvider {
     case "s3":
       return new S3StorageProvider()
     case "db":
-      return new DbStorageProvider()
+      // Fall back to in-memory if the database can't be reached, so a DB outage
+      // never prevents the RoofPitch report email from being sent.
+      return new FallbackStorageProvider(new DbStorageProvider(), new MemoryStorageProvider())
     case "memory":
       return new MemoryStorageProvider()
     default:

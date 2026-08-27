@@ -70,6 +70,16 @@ export async function query<T extends Record<string, unknown> = Record<string, u
   return pool.query<T>(text, params)
 }
 
+/** Quick connectivity probe used by the admin status endpoint. */
+export async function pingDatabase(): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await query("SELECT 1")
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: (err as Error).message }
+  }
+}
+
 /** Use for multi-statement transactions that need one dedicated connection. */
 export async function withConnection<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
   const pool = await getPool()

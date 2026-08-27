@@ -4,7 +4,7 @@ import { useState } from "react"
 import useSWR from "swr"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Check, X, Clock, LogOut, MapPin, Mail, Phone, FileText, Send, Paperclip } from "lucide-react"
+import { Check, X, Clock, LogOut, MapPin, Mail, Phone, FileText, Send, Paperclip, RefreshCw } from "lucide-react"
 import type { Contractor, ContractorStatus, MeasurementRequest } from "@/lib/workflow/repository"
 import type { SentEmail } from "@/lib/providers/email"
 
@@ -34,7 +34,53 @@ export function AdminDashboard() {
     emails: SentEmail[]
   }>(`/api/admin/contractors?status=${filter}`, fetcher, { refreshInterval: 5000 })
 
+  const { data: status } = useSWR<{ persistent: boolean; driver: string; error?: string }>(
+    "/api/admin/status",
+    fetcher,
+    { refreshInterval: 15000 },
+  )
+
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [processing, setProcessing] = useState(false)
+  const [processMsg, setProcessMsg] = useState<string | null>(null)
+  const [testing, setTesting] = useState(false)
+
+  async function sendTestEmail() {
+    setTesting(true)
+    setProcessMsg(null)
+    try {
+      const res = await fetch("/api/admin/test-report-email", { method: "POST" })
+      const data = (await res.json()) as { ok?: boolean; sentTo?: string; error?: string }
+      setProcessMsg(
+        data.ok
+          ? `Test report email sent to ${data.sentTo} with both PDFs attached.`
+          : `Test email failed: ${data.error ?? "unknown error"}`,
+      )
+      mutate()
+    } catch {
+      setProcessMsg("Test email failed. Try again.")
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  async function processJobs() {
+    setProcessing(true)
+    setProcessMsg(null)
+    try {
+      const res = await fetch("/api/admin/process-jobs", { method: "POST" })
+      const data = (await res.json()) as { checked?: number; results?: { status: string }[] }
+      const ready = (data.results ?? []).filter((r) => r.status === "ready").length
+      setProcessMsg(
+        `Checked ${data.checked ?? 0} in progress · ${ready} report${ready === 1 ? "" : "s"} delivered.`,
+      )
+      mutate()
+    } catch {
+      setProcessMsg("Could not process jobs. Try again.")
+    } finally {
+      setProcessing(false)
+    }
+  }
 
   async function setStatus(id: string, status: ContractorStatus) {
     setBusyId(id)
@@ -65,10 +111,39 @@ export function AdminDashboard() {
             Review companies that applied to be listed, and approve the ones you trust.
           </p>
         </div>
-        <Button variant="outline" onClick={logout} className="gap-2">
-          <LogOut className="h-4 w-4" /> Sign out
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={processJobs} disabled={processing} className="gap-2">
+            <RefreshCw className={`h-4 w-4 ${processing ? "animate-spin" : ""}`} />
+            {processing ? "Processing…" : "Process pending reports"}
+          </Button>
+          <Button variant="outline" onClick={sendTestEmail} disabled={testing} className="gap-2">
+            <Send className={`h-4 w-4 ${testing ? "animate-pulse" : ""}`} />
+            {testing ? "Sending…" : "Send test report email"}
+          </Button>
+          <Button variant="outline" onClick={logout} className="gap-2">
+            <LogOut className="h-4 w-4" /> Sign out
+          </Button>
+        </div>
       </header>
+      {processMsg && (
+        <p className="mt-3 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">{processMsg}</p>
+      )}
+
+      {status && !status.persistent && (
+        <div className="mt-4 rounded-lg border border-accent/40 bg-accent/10 px-4 py-3 text-sm">
+          <p className="font-medium text-foreground">Temporary storage — data will not persist</p>
+          <p className="mt-1 text-muted-foreground text-pretty">
+            The database isn&apos;t connected, so new registrations and approvals reset when the
+            server restarts. Reports still generate and email. To enable permanent storage, finish
+            the Aurora/AWS trust setup.
+          </p>
+        </div>
+      )}
+      {status?.persistent && (
+        <p className="mt-4 flex items-center gap-1.5 text-sm text-primary">
+          <Check className="h-4 w-4" /> Database connected — data is saved permanently.
+        </p>
+      )}
 
       {/* Filter tabs */}
       <div className="mt-8 flex flex-wrap gap-2">
@@ -242,9 +317,9 @@ export function AdminDashboard() {
       </div>
 
       {/* Sent notifications */}
-      <h2 className="mt-12 font-heading text-2xl font-bold tracking-tight">Contractor notifications</h2>
+      <h2 className="mt-12 font-heading text-2xl font-bold tracking-tight">Report emails</h2>
       <p className="mt-1 text-muted-foreground">
-        Lead emails sent to matched contractors, newest first.{" "}
+        Roof reports delivered to the RoofPitch inbox, newest first.{" "}
         {emails.length === 0
           ? ""
           : emails[0].provider === "console"

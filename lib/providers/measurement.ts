@@ -8,6 +8,7 @@
  */
 
 import { generateReportPdf, generateMaterialsPdf } from "@/lib/mock-report"
+import { resolveEagleViewProducts } from "@/lib/quote-scope"
 
 export type MeasurementStatus = "pending" | "in_progress" | "ready" | "failed"
 
@@ -43,12 +44,36 @@ export interface EagleViewAddress {
   longitude?: number | null
 }
 
+/** Per-order options that don't belong to the address itself. */
+export interface CreateJobOptions {
+  /**
+   * What the homeowner wants quoted. Resolved into EagleView's
+   * PrimaryProductId + AddOnProductIds by lib/quote-scope.
+   */
+  scopes?: string[]
+}
+
 export interface MeasurementProvider {
   readonly name: string
-  createJob(address: string, structured?: EagleViewAddress): Promise<MeasurementJob>
+  createJob(
+    address: string,
+    structured?: EagleViewAddress,
+    options?: CreateJobOptions,
+  ): Promise<MeasurementJob>
   getStatus(jobId: string): Promise<MeasurementJobStatus>
   downloadReport(jobId: string): Promise<ReportFile>
   downloadMaterials(jobId: string): Promise<ReportFile>
+}
+
+/**
+ * EagleView's docs show PlaceOrder and GetReport returning an ARRAY that wraps a
+ * single object (e.g. `[{ OrderId, ReportIds }]`), but the live sandbox currently
+ * returns the bare OBJECT. To be robust against both (and any future flip), always
+ * unwrap: if we get an array, take the first element; otherwise use the value as-is.
+ */
+function firstOf(value: unknown): Record<string, unknown> {
+  const v = Array.isArray(value) ? value[0] : value
+  return (v ?? {}) as Record<string, unknown>
 }
 
 /** Best-effort parse of "123 Main St, City, ST 12345" into EagleView parts. */
@@ -66,10 +91,30 @@ function parseAddress(raw: string): EagleViewAddress {
 /* EagleView — real provider (used in production)                      */
 /* ------------------------------------------------------------------ */
 
+/**
+ * EagleView host per environment. We run against the sandbox until EagleView
+ * approves the integration for production, then flip EAGLEVIEW_ENV=production
+ * (or set EAGLEVIEW_API_BASE explicitly). The OAuth token host is the same in
+ * both environments; only the API host changes.
+ */
+const EAGLEVIEW_HOSTS = {
+  sandbox: "https://sandbox.apicenter.eagleview.com",
+  // Production shares the same API surface as sandbox (same /v2, /v3, /v1 paths),
+  // just without the `sandbox.` prefix. Verified by probing: this host returns a
+  // proper auth response for our paths, whereas apis.eagleview.com returns AWS
+  // "Missing Authentication Token" (a different API surface that doesn't serve them).
+  production: "https://apicenter.eagleview.com",
+} as const
+
 export class EagleViewProvider implements MeasurementProvider {
   readonly name = "eagleview"
-  // API host for placing/reading orders. Defaults to EagleView's documented host.
-  private readonly baseUrl = process.env.EAGLEVIEW_API_BASE ?? "https://apis.eagleview.com"
+  // API host for placing/reading orders. Resolution order:
+  //   1. EAGLEVIEW_API_BASE (explicit override)
+  //   2. EAGLEVIEW_ENV=sandbox|production   (defaults to sandbox)
+  private readonly baseUrl =
+    process.env.EAGLEVIEW_API_BASE ??
+    EAGLEVIEW_HOSTS[(process.env.EAGLEVIEW_ENV as keyof typeof EAGLEVIEW_HOSTS) ?? "sandbox"] ??
+    EAGLEVIEW_HOSTS.sandbox
   // OAuth token endpoint. Documented default is the API Center host.
   private readonly tokenUrl = process.env.EAGLEVIEW_TOKEN_URL ?? "https://apicenter.eagleview.com/oauth2/v1/token"
   private readonly timeoutMs = Number(process.env.EAGLEVIEW_TIMEOUT_MS ?? 20000)
@@ -159,32 +204,72 @@ export class EagleViewProvider implements MeasurementProvider {
    * addresses. `structured` lets callers pass the exact address parts; otherwise
    * we do a best-effort parse of a single-line address string.
    */
-  async createJob(address: string, structured?: EagleViewAddress): Promise<MeasurementJob> {
+  async createJob(
+    address: string,
+    structured?: EagleViewAddress,
+    options?: CreateJobOptions,
+  ): Promise<MeasurementJob> {
     const addr = structured ?? parseAddress(address)
-    const productId = Number(process.env.EAGLEVIEW_PRODUCT_ID ?? 106) // 106 = roof report
-    const deliveryProductId = Number(process.env.EAGLEVIEW_DELIVERY_PRODUCT_ID ?? 8)
+    // The homeowner's quote scope picks the products. Base is product 31 =
+    // "Premium - Residential", EagleView's comprehensive roof report: 3D roof
+    // diagram (detailed drawings), all critical measurements, and a waste
+    // calculation table (materials takeoff). Verified present in the live
+    // production catalog (GetAvailableProducts). Including siding in the scope
+    // adds the siding add-on; every other combination orders the plain report.
+    const { primaryProductId, addOnProductIds } = resolveEagleViewProducts(options?.scopes)
+    const productId = primaryProductId
+    const deliveryProductId = Number(process.env.EAGLEVIEW_DELIVERY_PRODUCT_ID ?? 8) // 8 = Regular
+    // MeasurementInstructionType 3 is valid for product 31 (allowed: [1,2,3,5]).
+    const measurementInstructionType = Number(process.env.EAGLEVIEW_MEASUREMENT_INSTRUCTION_TYPE ?? 3)
+    const addressType = Number(process.env.EAGLEVIEW_ADDRESS_TYPE ?? 1)
 
-    const body = {
+    // IMPORTANT: EagleView expects OrderReports AND ReportAddresses to both be
+    // ARRAYS, despite the Swagger describing them as objects. Verified live against
+    // production /v2/Order/PriceOrder — only the array/array shape returns HTTP 200:
+    //   OrderReports object + ReportAddresses object -> 400 ReportAddresses "An error has occurred"
+    //   OrderReports object + ReportAddresses array  -> 400 (same)
+    //   OrderReports array  + ReportAddresses object -> 400 ReportAddresses required
+    //   OrderReports array  + ReportAddresses array  -> 200 + price quote
+    // The parent-says-"required"/child-says-"An error has occurred" pair is the
+    // giveaway: their model binder fails on the nested type, nulling the parent.
+    //
+    // Latitude/Longitude are typed as (non-nullable) floats in EagleView's model.
+    // Sending `null` makes their .NET model binder throw a deserialization error
+    // ("An error has occurred" on ReportAddresses), so we only include them when
+    // we actually have finite numbers — otherwise we omit them entirely.
+    const reportAddresses: Record<string, unknown> = {
+      Address: addr.address,
+      City: addr.city,
+      State: addr.state,
+      Zip: addr.zip,
+      Country: addr.country ?? "US",
+      AddressType: addressType,
+    }
+    if (Number.isFinite(addr.latitude as number)) reportAddresses.Latitude = addr.latitude
+    if (Number.isFinite(addr.longitude as number)) reportAddresses.Longitude = addr.longitude
+
+    // PromoCode is a top-level field (sibling of OrderReports) per EagleView's
+    // PlaceOrder schema. When set, EagleView discounts/zeroes the report and does
+    // NOT charge the card on file — this is how we run free test orders. Leave
+    // EAGLEVIEW_PROMO_CODE unset for a normal (charged) production order.
+    const promoCode = process.env.EAGLEVIEW_PROMO_CODE?.trim() || undefined
+    const body: Record<string, unknown> = {
       OrderReports: [
         {
-          ReportAddresses: [
-            {
-              Address: addr.address,
-              City: addr.city,
-              State: addr.state,
-              Zip: addr.zip,
-              Country: addr.country ?? "US",
-              Latitude: addr.latitude ?? null,
-              Longitude: addr.longitude ?? null,
-              AddressType: 1,
-            },
-          ],
+          ReportAddresses: [reportAddresses],
           PrimaryProductId: productId,
           DeliveryProductId: deliveryProductId,
-          MeasurementInstructionType: 3,
+          MeasurementInstructionType: measurementInstructionType,
           ChangesInLast4Years: false,
+          // Must be `AddOnProductIds` (an int array). `AddOnProducts` is silently
+          // IGNORED by EagleView — the quote comes back at the base price with
+          // AddOnProductPriceQuotes: null, so the add-on would never be ordered.
+          // Verified live: [87] moves the quote from $47.25 to $157.50.
+          // Only sent when the scope needs an add-on (siding).
+          ...(addOnProductIds.length ? { AddOnProductIds: addOnProductIds } : {}),
         },
       ],
+      ...(promoCode ? { PromoCode: promoCode } : {}),
     }
 
     const res = await this.fetchWithTimeout(`${this.baseUrl}/v2/Order/PlaceOrder`, {
@@ -196,9 +281,13 @@ export class EagleViewProvider implements MeasurementProvider {
       const detail = await res.text().catch(() => "")
       throw new Error(`EagleView PlaceOrder failed (${res.status}). ${detail.slice(0, 300)}`)
     }
-    const data = (await res.json()) as Record<string, unknown>
-    // The report id location varies; probe the common shapes.
+    // Docs show `[{ OrderId, ReportIds }]`; sandbox returns the bare object.
+    // firstOf() handles both.
+    const data = firstOf(await res.json())
+    // EagleView responds with { OrderId, ReportIds: [<id>] }. Probe that first,
+    // then fall back to older/alternate shapes for safety.
     const reportId =
+      ((data.ReportIds as Array<string | number> | undefined)?.[0]) ??
       (data.reportId as string | number | undefined) ??
       (data.ReportId as string | number | undefined) ??
       ((data.reports as Array<{ reportId?: string | number }> | undefined)?.[0]?.reportId) ??
@@ -220,7 +309,7 @@ export class EagleViewProvider implements MeasurementProvider {
       { headers: await this.headers() },
     )
     if (!res.ok) throw new Error(`EagleView GetReport failed (${res.status})`)
-    const data = (await res.json()) as Record<string, unknown>
+    const data = firstOf(await res.json())
     const statusRaw =
       data.status ?? data.Status ?? data.reportStatus ?? data.ReportStatus ?? data.statusId ?? data.StatusId
     return { id: jobId, status: this.mapStatus(statusRaw) }
@@ -256,11 +345,28 @@ export class EagleViewProvider implements MeasurementProvider {
     return { filename, contentType, base64: buf.toString("base64") }
   }
 
-  // Roof 3D PDF (fileFormat=2, fileType=199) — the human-readable roof report.
-  downloadReport(jobId: string) {
-    return this.download(jobId, 2, 199, `roof-report-${jobId}.pdf`)
+  /**
+   * The human-readable roof report PDF. EagleView exposes this as a direct
+   * download URL in the GetReport payload (`ReportDownloadLink`) rather than via
+   * GetReportFile — verified against the sandbox, where GetReportFile file-type
+   * codes return images/JSON, not the report PDF.
+   */
+  async downloadReport(jobId: string): Promise<ReportFile> {
+    const details = firstOf(await this.getReportDetails(jobId))
+    const link =
+      (details.ReportDownloadLink as string | undefined) ??
+      (details.reportDownloadLink as string | undefined)
+    if (!link) throw new Error("EagleView report has no ReportDownloadLink yet (not ready).")
+    const f = await this.fetchWithTimeout(link, {})
+    if (!f.ok) throw new Error(`EagleView report PDF download failed (${f.status})`)
+    const buf = Buffer.from(await f.arrayBuffer())
+    return {
+      filename: `roof-report-${jobId}.pdf`,
+      contentType: f.headers.get("content-type") ?? "application/pdf",
+      base64: buf.toString("base64"),
+    }
   }
-  // EV Measurement JSON (fileFormat=18, fileType=107) — structured measurements.
+  // EV Measurement export JSON (fileFormat=18, fileType=107) — structured measurements.
   downloadMaterials(jobId: string) {
     return this.download(jobId, 18, 107, `measurements-${jobId}.json`)
   }

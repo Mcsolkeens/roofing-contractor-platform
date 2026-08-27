@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { CheckCircle2, TrendingUp, BadgeCheck, CalendarClock } from "lucide-react"
+import { useState, useRef } from "react"
+import { CheckCircle2, TrendingUp, BadgeCheck, CalendarClock, Upload, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 const perks = [
@@ -29,9 +29,34 @@ export function ContractorRegister() {
   const [services, setServices] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [logo, setLogo] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   function toggleService(s: string) {
     setServices((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]))
+  }
+
+  function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setError("")
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith("image/")) {
+      setError("Please choose an image file for your logo.")
+      return
+    }
+    // Keep it small so the whole application stays a lightweight payload.
+    if (file.size > 1_000_000) {
+      setError("Logo must be under 1 MB.")
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => setLogo(typeof reader.result === "string" ? reader.result : null)
+    reader.readAsDataURL(file)
+  }
+
+  function clearLogo() {
+    setLogo(null)
+    if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -40,6 +65,8 @@ export function ContractorRegister() {
     setError("")
     const form = new FormData(e.currentTarget)
     const area = String(form.get("area") ?? "")
+    const postalCode = String(form.get("postalCode") ?? "")
+    const yearRaw = String(form.get("yearEstablished") ?? "").trim()
     const res = await fetch("/api/contractors", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -49,8 +76,11 @@ export function ContractorRegister() {
         email: form.get("email"),
         phone: form.get("phone"),
         serviceArea: area,
-        postalCode: area,
+        postalCode,
         specialties: services.map((s) => s.toLowerCase()),
+        description: String(form.get("description") ?? "").trim() || undefined,
+        yearEstablished: yearRaw ? Number(yearRaw) : undefined,
+        logoUrl: logo ?? undefined,
       }),
     })
     setLoading(false)
@@ -111,11 +141,17 @@ export function ContractorRegister() {
                     <Field label="Email" id="email" type="email" placeholder="you@company.com" />
                     <Field label="Phone" id="phone" type="tel" placeholder="(555) 123-4567" />
                   </div>
-                  <Field
-                    label="Service area (postal / city)"
-                    id="area"
-                    placeholder="Toronto, ON"
-                  />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="Service area (city/region)" id="area" placeholder="Greater Sudbury, ON" />
+                    <Field
+                      label="Primary postal code"
+                      id="postalCode"
+                      placeholder="P3A 1B2"
+                    />
+                  </div>
+                  <p className="-mt-2 text-xs text-muted-foreground">
+                    We use your postal code to match you with homeowners in your area.
+                  </p>
 
                   <div>
                     <span className="mb-2 block text-sm font-medium">Services offered</span>
@@ -137,6 +173,82 @@ export function ContractorRegister() {
                           </button>
                         )
                       })}
+                    </div>
+                  </div>
+
+                  {/* About us / company description */}
+                  <div>
+                    <label htmlFor="description" className="mb-2 block text-sm font-medium">
+                      About your company <span className="font-normal text-muted-foreground">(optional)</span>
+                    </label>
+                    <textarea
+                      id="description"
+                      name="description"
+                      rows={3}
+                      maxLength={1000}
+                      placeholder="Tell homeowners who you are, how long you've been roofing, and what makes your crew stand out."
+                      className="w-full rounded-lg border border-input bg-background px-3 py-2 text-base outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/30"
+                    />
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {/* Year established */}
+                    <div>
+                      <label htmlFor="yearEstablished" className="mb-2 block text-sm font-medium">
+                        Year established <span className="font-normal text-muted-foreground">(optional)</span>
+                      </label>
+                      <input
+                        id="yearEstablished"
+                        name="yearEstablished"
+                        type="number"
+                        min={1900}
+                        max={new Date().getFullYear()}
+                        placeholder="2008"
+                        className="h-11 w-full rounded-lg border border-input bg-background px-3 text-base outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/30"
+                      />
+                    </div>
+
+                    {/* Logo upload */}
+                    <div>
+                      <span className="mb-2 block text-sm font-medium">
+                        Company logo <span className="font-normal text-muted-foreground">(optional)</span>
+                      </span>
+                      {logo ? (
+                        <div className="flex items-center gap-3 rounded-lg border border-input p-2">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={logo || "/placeholder.svg"}
+                            alt="Company logo preview"
+                            className="h-11 w-11 rounded-md border border-border object-contain"
+                          />
+                          <span className="flex-1 truncate text-sm text-muted-foreground">Logo added</span>
+                          <button
+                            type="button"
+                            onClick={clearLogo}
+                            aria-label="Remove logo"
+                            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-input text-sm text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
+                        >
+                          <Upload className="h-4 w-4" />
+                          Upload logo
+                        </button>
+                      )}
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleLogoChange}
+                        className="hidden"
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">PNG or JPG, up to 1 MB.</p>
                     </div>
                   </div>
                 </div>
@@ -168,6 +280,7 @@ export function ContractorRegister() {
                   onClick={() => {
                     setSubmitted(false)
                     setServices([])
+                    clearLogo()
                   }}
                   className="mt-8 h-11"
                 >
