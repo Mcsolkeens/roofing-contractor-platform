@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import Image from "next/image"
 import {
   ArrowLeft,
@@ -15,6 +15,16 @@ import {
 import { Button } from "@/components/ui/button"
 import { manufacturers, findManufacturer, findLine } from "@/lib/shingle-brands"
 import { quoteScopeOptions, formatScopes, type QuoteScopeId } from "@/lib/quote-scope"
+import {
+  sectionsForScopes,
+  visibleQuestions,
+  isSectionComplete,
+  reviewGroups,
+  summarizeQuote,
+  type Answers,
+  type Question,
+  type ColorSwatch,
+} from "@/lib/quote-details"
 
 interface PublicContractor {
   id: string
@@ -23,13 +33,137 @@ interface PublicContractor {
   specialties: string[]
 }
 
-/** Question steps 0–4; step 5 is the contractor match screen. */
-const TOTAL_STEPS = 5
-const MATCHES_STEP = 5
+type StepKind = "scope" | "service" | "review" | "address" | "brand" | "line" | "color" | "matches"
+interface WizardStep {
+  kind: StepKind
+  scope?: QuoteScopeId
+}
+
+/** Empty-hex ("Tint / Other") swatch fill so it still reads as a colour chip. */
+const OTHER_SWATCH = "conic-gradient(from 210deg, #d7d3ca, #a8a29a, #d7d3ca)"
+
+function RadioField({
+  question,
+  value,
+  onChange,
+}: {
+  question: Question
+  value: string
+  onChange: (v: string) => void
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      {question.options?.map((o) => {
+        const active = value === o.id
+        return (
+          <button
+            key={o.id}
+            type="button"
+            onClick={() => onChange(o.id)}
+            aria-pressed={active}
+            className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-left text-sm transition-all ${
+              active
+                ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+                : "border-border hover:border-foreground/30"
+            }`}
+          >
+            <span>{o.label}</span>
+            {active && <Check className="h-4 w-4 shrink-0 text-primary" />}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function CheckboxField({
+  question,
+  value,
+  onToggle,
+}: {
+  question: Question
+  value: string[]
+  onToggle: (id: string) => void
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      {question.options?.map((o) => {
+        const checked = value.includes(o.id)
+        return (
+          <label
+            key={o.id}
+            className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition-all ${
+              checked
+                ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+                : "border-border hover:border-foreground/30"
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={() => onToggle(o.id)}
+              className="sr-only"
+            />
+            <span
+              aria-hidden="true"
+              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
+                checked ? "border-primary bg-primary text-primary-foreground" : "border-border"
+              }`}
+            >
+              {checked && <Check className="h-3.5 w-3.5" />}
+            </span>
+            <span className="min-w-0">{o.label}</span>
+          </label>
+        )
+      })}
+    </div>
+  )
+}
+
+function SwatchField({
+  swatches,
+  value,
+  onChange,
+}: {
+  swatches: ColorSwatch[]
+  value: string
+  onChange: (v: string) => void
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      {swatches.map((sw) => {
+        const active = value === sw.id
+        return (
+          <button
+            key={sw.id}
+            type="button"
+            onClick={() => onChange(sw.id)}
+            aria-pressed={active}
+            aria-label={sw.label}
+            className={`flex items-center gap-2.5 rounded-lg border p-2.5 text-left text-sm transition-all ${
+              active
+                ? "border-primary ring-2 ring-primary/30"
+                : "border-border hover:border-foreground/30"
+            }`}
+          >
+            <span
+              aria-hidden="true"
+              className="h-7 w-7 shrink-0 rounded-full border border-border/70"
+              style={{ background: sw.hex || OTHER_SWATCH }}
+            />
+            <span className="min-w-0 truncate">{sw.label}</span>
+            {active && <Check className="ml-auto h-4 w-4 shrink-0 text-primary" />}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
 export function HomeownerQuiz() {
-  const [step, setStep] = useState(0)
+  const [stepIndex, setStepIndex] = useState(0)
   const [scopes, setScopes] = useState<QuoteScopeId[]>([])
+  const [answers, setAnswers] = useState<Answers>({})
   const [postal, setPostal] = useState("")
   const [address, setAddress] = useState("")
   const [manufacturerId, setManufacturerId] = useState<string | null>(null)
@@ -46,33 +180,59 @@ export function HomeownerQuiz() {
   const postalValid = postal.trim().length >= 3
   const activeManufacturer = findManufacturer(manufacturerId)
   const activeLine = findLine(manufacturerId, lineId)
+  const roofSelected = scopes.includes("roof")
+
+  const sections = useMemo(() => sectionsForScopes(scopes), [scopes])
+
+  // The wizard's steps are dynamic: one detail step per selected service, a
+  // review, the address, then the shingle picker (only when Roof is in scope),
+  // and finally the contractor matches.
+  const steps = useMemo<WizardStep[]>(() => {
+    const list: WizardStep[] = [{ kind: "scope" }]
+    sections.forEach((s) => list.push({ kind: "service", scope: s.scope }))
+    list.push({ kind: "review" }, { kind: "address" })
+    if (roofSelected) list.push({ kind: "brand" }, { kind: "line" }, { kind: "color" })
+    list.push({ kind: "matches" })
+    return list
+  }, [sections, roofSelected])
+
+  const current = steps[Math.min(stepIndex, steps.length - 1)]
+  const questionSteps = steps.length - 1 // everything except the matches results
+  const nextIsMatches = steps[stepIndex + 1]?.kind === "matches"
+  const progress = stepIndex / (steps.length - 1)
 
   function toggleScope(id: QuoteScopeId) {
     setScopes((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
-
+  function setRadio(qid: string, val: string) {
+    setAnswers((a) => ({ ...a, [qid]: val }))
+  }
+  function toggleCheckbox(qid: string, val: string) {
+    setAnswers((a) => {
+      const cur = Array.isArray(a[qid]) ? (a[qid] as string[]) : []
+      return { ...a, [qid]: cur.includes(val) ? cur.filter((x) => x !== val) : [...cur, val] }
+    })
+  }
   function toggleSelected(id: string) {
     setSelectedIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]))
   }
 
-  // Fetch real, admin-approved contractors near the postal code, then advance.
   async function goToMatches() {
     setLoadingContractors(true)
     try {
       const res = await fetch(`/api/contractors?postalCode=${encodeURIComponent(postal)}&limit=6`)
       const data = (await res.json()) as { contractors: PublicContractor[] }
       setContractors(data.contractors ?? [])
-      setSelectedIds((data.contractors ?? []).map((c) => c.id)) // pre-select all
+      setSelectedIds((data.contractors ?? []).map((c) => c.id))
     } catch (err) {
       console.log("[v0] failed to load contractors:", (err as Error).message)
       setContractors([])
     } finally {
       setLoadingContractors(false)
-      setStep(MATCHES_STEP)
+      setStepIndex(steps.length - 1)
     }
   }
 
-  // Readable "Manufacturer Line — Colour" string for the report / admin email.
   function resolveColorLabel(): string {
     if (!activeManufacturer || !activeLine) return ""
     const picked = activeLine.colors.find((c) => c.id === color)
@@ -83,17 +243,20 @@ export function HomeownerQuiz() {
   async function submitRequest() {
     setSubmitting(true)
     try {
+      const detailsSummary = summarizeQuote(scopes, answers)
+      const shingle = activeLine ? `${activeManufacturer?.name} ${activeLine.name}` : ""
+      const product =
+        [detailsSummary, shingle ? `Shingle: ${shingle}` : ""].filter(Boolean).join(" | ") ||
+        formatScopes(scopes)
+
       await fetch("/api/measurement", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           postalCode: postal,
           address: address || postal,
-          // Scope drives which EagleView report/add-ons get ordered server-side.
           scopes,
-          product: activeLine
-            ? `${activeManufacturer?.name} ${activeLine.name}`
-            : formatScopes(scopes),
+          product,
           color: resolveColorLabel(),
           homeownerEmail: email || undefined,
           contractorIds: selectedIds,
@@ -107,15 +270,17 @@ export function HomeownerQuiz() {
     }
   }
 
-  function next() {
-    setStep((s) => Math.min(s + 1, MATCHES_STEP))
+  function primaryAction() {
+    if (nextIsMatches) void goToMatches()
+    else setStepIndex((i) => Math.min(i + 1, steps.length - 1))
   }
   function back() {
-    setStep((s) => Math.max(s - 1, 0))
+    setStepIndex((i) => Math.max(i - 1, 0))
   }
   function reset() {
-    setStep(0)
+    setStepIndex(0)
     setScopes([])
+    setAnswers({})
     setPostal("")
     setAddress("")
     setManufacturerId(null)
@@ -127,7 +292,30 @@ export function HomeownerQuiz() {
     setSelectedIds([])
   }
 
-  const progress = Math.min(step, TOTAL_STEPS) / TOTAL_STEPS
+  function canAdvance(): boolean {
+    switch (current.kind) {
+      case "scope":
+        return scopes.length > 0
+      case "service": {
+        const sec = sections.find((s) => s.scope === current.scope)
+        return sec ? isSectionComplete(sec, answers) : true
+      }
+      case "address":
+        return postalValid
+      case "brand":
+        return Boolean(manufacturerId)
+      case "line":
+        return Boolean(lineId)
+      case "color":
+        return Boolean(color)
+      default:
+        return true
+    }
+  }
+
+  const activeSection =
+    current.kind === "service" ? sections.find((s) => s.scope === current.scope) : undefined
+  const groups = reviewGroups(scopes, answers)
 
   return (
     <section id="get-matched" className="border-b border-border">
@@ -141,9 +329,9 @@ export function HomeownerQuiz() {
               Get a quote for your home.
             </h2>
             <p className="mt-5 text-lg leading-relaxed text-muted-foreground text-pretty">
-              Tell us what you want quoted, pick the look you&apos;re after, and choose the roofing
-              companies near you that you&apos;d like to hear from. It&apos;s free, and our team
-              handles the rest.
+              Tell us what you want quoted, answer a few quick questions, review your request, then
+              choose the roofing companies near you that you&apos;d like to hear from. It&apos;s
+              free, and our team handles the rest.
             </p>
             <ul className="mt-8 space-y-3">
               {[
@@ -167,7 +355,9 @@ export function HomeownerQuiz() {
                 <div className="mb-8">
                   <div className="flex items-center justify-between text-sm">
                     <span className="font-medium">
-                      {step < TOTAL_STEPS ? `Step ${step + 1} of ${TOTAL_STEPS}` : "Your matches"}
+                      {current.kind === "matches"
+                        ? "Your matches"
+                        : `Step ${stepIndex + 1} of ${questionSteps}`}
                     </span>
                     <span className="text-muted-foreground">{Math.round(progress * 100)}%</span>
                   </div>
@@ -179,8 +369,8 @@ export function HomeownerQuiz() {
                   </div>
                 </div>
 
-                {/* Step 0 — what to quote for (drives the report we order) */}
-                {step === 0 && (
+                {/* Scope — what to quote for (drives the report we order) */}
+                {current.kind === "scope" && (
                   <div>
                     <h3 className="font-heading text-2xl font-bold">
                       What would you like to quote for?
@@ -226,19 +416,93 @@ export function HomeownerQuiz() {
                         )
                       })}
                     </div>
-                    <Button
-                      onClick={next}
-                      disabled={scopes.length === 0}
-                      className="mt-6 h-12 w-full bg-accent text-base text-accent-foreground hover:bg-accent/90"
-                    >
-                      Continue
-                      <ArrowRight className="ml-1 h-5 w-5" />
-                    </Button>
                   </div>
                 )}
 
-                {/* Step 1 — location */}
-                {step === 1 && (
+                {/* Service detail — per-scope questions */}
+                {current.kind === "service" && activeSection && (
+                  <div>
+                    <h3 className="font-heading text-2xl font-bold">{activeSection.title}</h3>
+                    <div className="mt-6 space-y-6">
+                      {visibleQuestions(activeSection, answers).map((q) => (
+                        <div key={q.id}>
+                          <p className="mb-2.5 text-sm font-medium">
+                            {q.label}
+                            {q.required && <span className="ml-1 text-accent">*</span>}
+                          </p>
+                          {q.kind === "radio" && (
+                            <RadioField
+                              question={q}
+                              value={(answers[q.id] as string) ?? ""}
+                              onChange={(v) => setRadio(q.id, v)}
+                            />
+                          )}
+                          {q.kind === "checkbox" && (
+                            <CheckboxField
+                              question={q}
+                              value={Array.isArray(answers[q.id]) ? (answers[q.id] as string[]) : []}
+                              onToggle={(id) => toggleCheckbox(q.id, id)}
+                            />
+                          )}
+                          {q.kind === "swatch" && q.swatches && (
+                            <SwatchField
+                              swatches={q.swatches}
+                              value={(answers[q.id] as string) ?? ""}
+                              onChange={(v) => setRadio(q.id, v)}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Review — everything the homeowner asked for */}
+                {current.kind === "review" && (
+                  <div>
+                    <h3 className="font-heading text-2xl font-bold">Review your quote request</h3>
+                    <p className="mt-2 text-muted-foreground">
+                      Here&apos;s what we&apos;ll price. Go back to change anything.
+                    </p>
+                    <div className="mt-6 space-y-4">
+                      <div className="rounded-xl border border-border p-4">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Services requested
+                        </p>
+                        <p className="mt-1 font-heading font-bold">{formatScopes(scopes)}</p>
+                      </div>
+                      {groups.map((g) => (
+                        <div key={g.scope} className="rounded-xl border border-border p-4">
+                          <p className="font-heading font-bold">{g.label}</p>
+                          {g.items.length > 0 ? (
+                            <ul className="mt-2 space-y-1.5">
+                              {g.items.map((it) => (
+                                <li
+                                  key={it.question}
+                                  className="flex items-center gap-2 text-sm text-muted-foreground"
+                                >
+                                  {it.hex !== undefined && (
+                                    <span
+                                      aria-hidden="true"
+                                      className="h-4 w-4 shrink-0 rounded-full border border-border/70"
+                                      style={{ background: it.hex || OTHER_SWATCH }}
+                                    />
+                                  )}
+                                  <span className="font-medium text-foreground">{it.value}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="mt-1 text-sm text-muted-foreground">No preferences set.</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Address / location */}
+                {current.kind === "address" && (
                   <div>
                     <h3 className="font-heading text-2xl font-bold">Where&apos;s your home?</h3>
                     <p className="mt-2 text-muted-foreground">
@@ -273,28 +537,15 @@ export function HomeownerQuiz() {
                         </div>
                       </div>
                     </div>
-                    <div className="mt-6 flex gap-3">
-                      <Button variant="outline" onClick={back} className="h-12 px-4">
-                        <ArrowLeft className="h-5 w-5" />
-                      </Button>
-                      <Button
-                        onClick={next}
-                        disabled={!postalValid}
-                        className="h-12 flex-1 bg-accent text-base text-accent-foreground hover:bg-accent/90"
-                      >
-                        Continue
-                        <ArrowRight className="ml-1 h-5 w-5" />
-                      </Button>
-                    </div>
                   </div>
                 )}
 
-                {/* Step 2 — manufacturer */}
-                {step === 2 && (
+                {/* Shingle manufacturer (roof only) */}
+                {current.kind === "brand" && (
                   <div>
-                    <h3 className="font-heading text-2xl font-bold">Pick a brand</h3>
+                    <h3 className="font-heading text-2xl font-bold">Pick a shingle brand</h3>
                     <p className="mt-2 text-muted-foreground">
-                      Choose the manufacturer you&apos;d like quoted.
+                      Choose the manufacturer you&apos;d like quoted for your roof.
                     </p>
                     <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
                       {manufacturers.map((m) => {
@@ -325,24 +576,11 @@ export function HomeownerQuiz() {
                         )
                       })}
                     </div>
-                    <div className="mt-6 flex gap-3">
-                      <Button variant="outline" onClick={back} className="h-12 px-4">
-                        <ArrowLeft className="h-5 w-5" />
-                      </Button>
-                      <Button
-                        onClick={next}
-                        disabled={!manufacturerId}
-                        className="h-12 flex-1 bg-accent text-base text-accent-foreground hover:bg-accent/90"
-                      >
-                        Continue
-                        <ArrowRight className="ml-1 h-5 w-5" />
-                      </Button>
-                    </div>
                   </div>
                 )}
 
-                {/* Step 3 — product line for the chosen manufacturer */}
-                {step === 3 && activeManufacturer && (
+                {/* Shingle product line (roof only) */}
+                {current.kind === "line" && activeManufacturer && (
                   <div>
                     <h3 className="font-heading text-2xl font-bold">
                       Choose your {activeManufacturer.name} shingle
@@ -377,7 +615,6 @@ export function HomeownerQuiz() {
                                   className="object-cover"
                                 />
                               ) : (
-                                // No local photo for this line — preview its palette instead.
                                 <span aria-hidden="true" className="flex h-full w-full">
                                   {l.colors.slice(0, 6).map((c) => (
                                     <span
@@ -402,35 +639,21 @@ export function HomeownerQuiz() {
                         )
                       })}
                     </div>
-                    <div className="mt-6 flex gap-3">
-                      <Button variant="outline" onClick={back} className="h-12 px-4">
-                        <ArrowLeft className="h-5 w-5" />
-                      </Button>
-                      <Button
-                        onClick={next}
-                        disabled={!lineId}
-                        className="h-12 flex-1 bg-accent text-base text-accent-foreground hover:bg-accent/90"
-                      >
-                        Continue
-                        <ArrowRight className="ml-1 h-5 w-5" />
-                      </Button>
-                    </div>
                   </div>
                 )}
 
-                {/* Step 4 — colour, from the chosen line's real palette */}
-                {step === 4 &&
+                {/* Shingle colour (roof only) */}
+                {current.kind === "color" &&
                   activeLine &&
                   (() => {
                     const activeColor = activeLine.colors.find((c) => c.id === color) ?? null
                     const previewColor = activeColor ?? activeLine.colors[0] ?? null
                     return (
                       <div>
-                        <h3 className="font-heading text-2xl font-bold">Pick a colour</h3>
+                        <h3 className="font-heading text-2xl font-bold">Pick a shingle colour</h3>
                         <p className="mt-2 text-muted-foreground">
                           {activeLine.colors.length} colours available on {activeLine.name}.
                         </p>
-
                         <div className="mt-6 flex flex-col gap-4 sm:flex-row">
                           <div className="sm:w-2/5">
                             <div className="relative aspect-square w-full overflow-hidden rounded-lg border border-border">
@@ -491,34 +714,12 @@ export function HomeownerQuiz() {
                             })}
                           </div>
                         </div>
-
-                        <div className="mt-6 flex gap-3">
-                          <Button variant="outline" onClick={back} className="h-12 px-4">
-                            <ArrowLeft className="h-5 w-5" />
-                          </Button>
-                          <Button
-                            onClick={goToMatches}
-                            disabled={!color || loadingContractors}
-                            className="h-12 flex-1 bg-accent text-base text-accent-foreground hover:bg-accent/90"
-                          >
-                            {loadingContractors ? (
-                              <>
-                                <Loader2 className="mr-1 h-5 w-5 animate-spin" /> Finding roofers…
-                              </>
-                            ) : (
-                              <>
-                                See my matches
-                                <ArrowRight className="ml-1 h-5 w-5" />
-                              </>
-                            )}
-                          </Button>
-                        </div>
                       </div>
                     )
                   })()}
 
-                {/* Step 5 — contractor results */}
-                {step === MATCHES_STEP && (
+                {/* Contractor matches */}
+                {current.kind === "matches" && (
                   <div>
                     <h3 className="font-heading text-2xl font-bold">
                       {contractors.length > 0
@@ -620,27 +821,55 @@ export function HomeownerQuiz() {
                         className="h-12 w-full rounded-lg border border-input bg-background px-3 text-base outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/30"
                       />
                     </div>
-
-                    <div className="mt-6 flex gap-3">
-                      <Button variant="outline" onClick={back} className="h-12 px-4">
-                        <ArrowLeft className="h-5 w-5" />
-                      </Button>
-                      <Button
-                        onClick={submitRequest}
-                        disabled={submitting || (contractors.length > 0 && selectedIds.length === 0)}
-                        className="h-12 flex-1 bg-accent text-base text-accent-foreground hover:bg-accent/90"
-                      >
-                        {submitting ? (
-                          <>
-                            <Loader2 className="mr-1 h-5 w-5 animate-spin" /> Sending…
-                          </>
-                        ) : (
-                          "Request free quotes"
-                        )}
-                      </Button>
-                    </div>
                   </div>
                 )}
+
+                {/* Footer nav */}
+                <div className="mt-6 flex gap-3">
+                  {stepIndex > 0 && (
+                    <Button variant="outline" onClick={back} className="h-12 px-4">
+                      <ArrowLeft className="h-5 w-5" />
+                      <span className="sr-only">Back</span>
+                    </Button>
+                  )}
+                  {current.kind === "matches" ? (
+                    <Button
+                      onClick={submitRequest}
+                      disabled={submitting || (contractors.length > 0 && selectedIds.length === 0)}
+                      className="h-12 flex-1 bg-accent text-base text-accent-foreground hover:bg-accent/90"
+                    >
+                      {submitting ? (
+                        <>
+                          <Loader2 className="mr-1 h-5 w-5 animate-spin" /> Sending…
+                        </>
+                      ) : (
+                        "Request free quotes"
+                      )}
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={primaryAction}
+                      disabled={!canAdvance() || loadingContractors}
+                      className="h-12 flex-1 bg-accent text-base text-accent-foreground hover:bg-accent/90"
+                    >
+                      {loadingContractors ? (
+                        <>
+                          <Loader2 className="mr-1 h-5 w-5 animate-spin" /> Finding roofers…
+                        </>
+                      ) : nextIsMatches ? (
+                        <>
+                          See my matches
+                          <ArrowRight className="ml-1 h-5 w-5" />
+                        </>
+                      ) : (
+                        <>
+                          Continue
+                          <ArrowRight className="ml-1 h-5 w-5" />
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
               </>
             ) : (
               <div className="flex flex-col items-center py-8 text-center">
@@ -661,7 +890,6 @@ export function HomeownerQuiz() {
                     <span className="font-medium text-foreground">{email}</span>.
                   </p>
                 )}
-
                 <Button variant="outline" onClick={reset} className="mt-8 h-11">
                   Start a new request
                 </Button>
