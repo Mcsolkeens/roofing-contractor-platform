@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { manufacturers, findManufacturer, findLine } from "@/lib/shingle-brands"
 import { quoteScopeOptions, formatScopes, type QuoteScopeId } from "@/lib/quote-scope"
+import { HouseDiagram, scopeColors } from "@/components/house-diagram"
 import {
   sectionsForScopes,
   visibleQuestions,
@@ -328,25 +329,45 @@ export function HomeownerQuiz() {
             <h2 className="mt-3 font-heading text-4xl font-bold tracking-tight text-balance sm:text-5xl">
               Get a quote for your home.
             </h2>
-            <p className="mt-5 text-lg leading-relaxed text-muted-foreground text-pretty">
-              Tell us what you want quoted, answer a few quick questions, review your request, then
-              choose the roofing companies near you that you&apos;d like to hear from. It&apos;s
-              free, and our team handles the rest.
-            </p>
-            <ul className="mt-8 space-y-3">
-              {[
-                "We check every company before they show up here",
-                "We measure your roof and line up your quotes",
-                "We don't sell your phone number or email",
-              ].map((item) => (
-                <li key={item} className="flex items-center gap-3 text-sm">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent">
-                    <Check className="h-3 w-3 text-accent-foreground" />
-                  </span>
-                  {item}
-                </li>
-              ))}
-            </ul>
+            {current.kind === "scope" || current.kind === "service" ? (
+              <div className="mt-6">
+                <HouseDiagram
+                  selected={scopes}
+                  active={current.kind === "service" ? current.scope : undefined}
+                  onToggle={current.kind === "scope" ? toggleScope : undefined}
+                  className="mx-auto w-full max-w-sm lg:max-w-md"
+                />
+                <p className="mt-3 text-center text-sm text-muted-foreground text-pretty">
+                  {scopes.length === 0
+                    ? "Pick a part on the right and we'll highlight it here."
+                    : current.kind === "service"
+                      ? "The part you're answering questions about is highlighted."
+                      : "Everything you've selected is highlighted on your home."}
+                </p>
+              </div>
+            ) : (
+              <>
+                <p className="mt-5 text-lg leading-relaxed text-muted-foreground text-pretty">
+                  Tell us what you want quoted, answer a few quick questions, review your request,
+                  then choose the roofing companies near you that you&apos;d like to hear from.
+                  It&apos;s free, and our team handles the rest.
+                </p>
+                <ul className="mt-8 space-y-3">
+                  {[
+                    "We check every company before they show up here",
+                    "We measure your roof and line up your quotes",
+                    "We don't sell your phone number or email",
+                  ].map((item) => (
+                    <li key={item} className="flex items-center gap-3 text-sm">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent">
+                        <Check className="h-3 w-3 text-accent-foreground" />
+                      </span>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
           </div>
 
           <div className="rounded-2xl border border-border bg-card p-6 shadow-xl sm:p-8">
@@ -406,6 +427,11 @@ export function HomeownerQuiz() {
                             >
                               {checked && <Check className="h-3.5 w-3.5" />}
                             </span>
+                            <span
+                              aria-hidden="true"
+                              className="h-3.5 w-3.5 shrink-0 rounded-full ring-2 ring-inset ring-white/40"
+                              style={{ backgroundColor: scopeColors[opt.id].fill }}
+                            />
                             <span className="min-w-0">
                               <span className="block font-heading font-bold">{opt.label}</span>
                               <span className="mt-0.5 block text-xs text-muted-foreground">
