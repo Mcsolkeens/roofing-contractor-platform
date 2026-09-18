@@ -19,7 +19,6 @@ import { HouseDiagram, scopeColors } from "@/components/house-diagram"
 import {
   sectionsForScopes,
   visibleQuestions,
-  isSectionComplete,
   reviewGroups,
   summarizeQuote,
   type Answers,
@@ -38,6 +37,7 @@ type StepKind = "scope" | "service" | "review" | "address" | "brand" | "line" | 
 interface WizardStep {
   kind: StepKind
   scope?: QuoteScopeId
+  questionId?: string
 }
 
 /** Empty-hex ("Tint / Other") swatch fill so it still reads as a colour chip. */
@@ -185,17 +185,20 @@ export function HomeownerQuiz() {
 
   const sections = useMemo(() => sectionsForScopes(scopes), [scopes])
 
-  // The wizard's steps are dynamic: one detail step per selected service, a
-  // review, the address, then the shingle picker (only when Roof is in scope),
-  // and finally the contractor matches.
+  // The wizard is progressive: each visible service question gets its own
+  // focused screen, then the next question fades in after Continue.
   const steps = useMemo<WizardStep[]>(() => {
     const list: WizardStep[] = [{ kind: "scope" }]
-    sections.forEach((s) => list.push({ kind: "service", scope: s.scope }))
+    sections.forEach((section) => {
+      visibleQuestions(section, answers).forEach((question) => {
+        list.push({ kind: "service", scope: section.scope, questionId: question.id })
+      })
+    })
     list.push({ kind: "review" }, { kind: "address" })
     if (roofSelected) list.push({ kind: "brand" }, { kind: "line" }, { kind: "color" })
     list.push({ kind: "matches" })
     return list
-  }, [sections, roofSelected])
+  }, [sections, answers, roofSelected])
 
   const current = steps[Math.min(stepIndex, steps.length - 1)]
   const questionSteps = steps.length - 1 // everything except the matches results
@@ -299,7 +302,12 @@ export function HomeownerQuiz() {
         return scopes.length > 0
       case "service": {
         const sec = sections.find((s) => s.scope === current.scope)
-        return sec ? isSectionComplete(sec, answers) : true
+        const question = sec && current.questionId
+          ? visibleQuestions(sec, answers).find((q) => q.id === current.questionId)
+          : undefined
+        if (!question) return true
+        const value = answers[question.id]
+        return Array.isArray(value) ? value.length > 0 : Boolean(value)
       }
       case "address":
         return postalValid
@@ -316,6 +324,10 @@ export function HomeownerQuiz() {
 
   const activeSection =
     current.kind === "service" ? sections.find((s) => s.scope === current.scope) : undefined
+  const activeQuestion =
+    activeSection && current.questionId
+      ? visibleQuestions(activeSection, answers).find((q) => q.id === current.questionId)
+      : undefined
   const groups = reviewGroups(scopes, answers)
 
   return (
@@ -445,40 +457,40 @@ export function HomeownerQuiz() {
                   </div>
                 )}
 
-                {/* Service detail — per-scope questions */}
-                {current.kind === "service" && activeSection && (
-                  <div>
-                    <h3 className="font-heading text-2xl font-bold">{activeSection.title}</h3>
-                    <div className="mt-6 space-y-6">
-                      {visibleQuestions(activeSection, answers).map((q) => (
-                        <div key={q.id}>
-                          <p className="mb-2.5 text-sm font-medium">
-                            {q.label}
-                            {q.required && <span className="ml-1 text-accent">*</span>}
-                          </p>
-                          {q.kind === "radio" && (
-                            <RadioField
-                              question={q}
-                              value={(answers[q.id] as string) ?? ""}
-                              onChange={(v) => setRadio(q.id, v)}
-                            />
-                          )}
-                          {q.kind === "checkbox" && (
-                            <CheckboxField
-                              question={q}
-                              value={Array.isArray(answers[q.id]) ? (answers[q.id] as string[]) : []}
-                              onToggle={(id) => toggleCheckbox(q.id, id)}
-                            />
-                          )}
-                          {q.kind === "swatch" && q.swatches && (
-                            <SwatchField
-                              swatches={q.swatches}
-                              value={(answers[q.id] as string) ?? ""}
-                              onChange={(v) => setRadio(q.id, v)}
-                            />
-                          )}
-                        </div>
-                      ))}
+                {/* Service detail — one focused question per screen */}
+                {current.kind === "service" && activeSection && activeQuestion && (
+                  <div key={activeQuestion.id} className="animate-in fade-in slide-in-from-right-2 duration-300">
+                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">
+                      {activeSection.label} details
+                    </p>
+                    <h3 className="mt-3 font-heading text-2xl font-bold text-balance">
+                      {activeQuestion.label}
+                    </h3>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Choose {activeQuestion.kind === "checkbox" ? "all that apply" : "one option"}.
+                    </p>
+                    <div className="mt-6">
+                      {activeQuestion.kind === "radio" && (
+                        <RadioField
+                          question={activeQuestion}
+                          value={(answers[activeQuestion.id] as string) ?? ""}
+                          onChange={(v) => setRadio(activeQuestion.id, v)}
+                        />
+                      )}
+                      {activeQuestion.kind === "checkbox" && (
+                        <CheckboxField
+                          question={activeQuestion}
+                          value={Array.isArray(answers[activeQuestion.id]) ? (answers[activeQuestion.id] as string[]) : []}
+                          onToggle={(id) => toggleCheckbox(activeQuestion.id, id)}
+                        />
+                      )}
+                      {activeQuestion.kind === "swatch" && activeQuestion.swatches && (
+                        <SwatchField
+                          swatches={activeQuestion.swatches}
+                          value={(answers[activeQuestion.id] as string) ?? ""}
+                          onChange={(v) => setRadio(activeQuestion.id, v)}
+                        />
+                      )}
                     </div>
                   </div>
                 )}
