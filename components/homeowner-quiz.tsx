@@ -194,15 +194,16 @@ export function HomeownerQuiz() {
         list.push({ kind: "service", scope: section.scope, questionId: question.id })
       })
     })
-    list.push({ kind: "review" }, { kind: "address" })
+    list.push({ kind: "address" })
     if (roofSelected) list.push({ kind: "brand" }, { kind: "line" }, { kind: "color" })
-    list.push({ kind: "matches" })
+    list.push({ kind: "matches" }, { kind: "review" })
     return list
   }, [sections, answers, roofSelected])
 
   const current = steps[Math.min(stepIndex, steps.length - 1)]
   const questionSteps = steps.length - 1 // everything except the matches results
   const nextIsMatches = steps[stepIndex + 1]?.kind === "matches"
+  const nextIsReview = steps[stepIndex + 1]?.kind === "review"
   const progress = stepIndex / (steps.length - 1)
 
   function toggleScope(id: QuoteScopeId) {
@@ -495,7 +496,7 @@ export function HomeownerQuiz() {
                   </div>
                 )}
 
-                {/* Review — everything the homeowner asked for */}
+                {/* Final review — selections, shingles, colour, and contractors */}
                 {current.kind === "review" && (
                   <div>
                     <h3 className="font-heading text-2xl font-bold">Review your quote request</h3>
@@ -536,6 +537,20 @@ export function HomeownerQuiz() {
                         </div>
                       ))}
                     </div>
+                  <div className="rounded-xl border border-border p-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Roof selection</p>
+                    <p className="mt-1 font-heading font-bold">{resolveColorLabel() || "No shingle selection"}</p>
+                  </div>
+                  <div className="rounded-xl border border-border p-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Contractors selected</p>
+                    <p className="mt-1 font-heading font-bold">
+                      {selectedIds.length > 0 ? `${selectedIds.length} contractor${selectedIds.length === 1 ? "" : "s"}` : "No specific contractor selected"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-border p-4">
+                    <label htmlFor="quiz-email-final" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Email for your quotes</label>
+                    <input id="quiz-email-final" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className="mt-2 h-12 w-full rounded-lg border border-input bg-background px-3 text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary/30" />
+                  </div>
                   </div>
                 )}
 
@@ -870,19 +885,13 @@ export function HomeownerQuiz() {
                       <span className="sr-only">Back</span>
                     </Button>
                   )}
-                  {current.kind === "matches" ? (
+                  {current.kind === "review" ? (
                     <Button
                       onClick={submitRequest}
-                      disabled={submitting || (contractors.length > 0 && selectedIds.length === 0)}
+                      disabled={submitting || !email.trim()}
                       className="h-12 flex-1 bg-accent text-base text-accent-foreground hover:bg-accent/90"
                     >
-                      {submitting ? (
-                        <>
-                          <Loader2 className="mr-1 h-5 w-5 animate-spin" /> Sending…
-                        </>
-                      ) : (
-                        "Request free quotes"
-                      )}
+                      {submitting ? <><Loader2 className="mr-1 h-5 w-5 animate-spin" /> Sending…</> : "Request free quotes"}
                     </Button>
                   ) : (
                     <Button
