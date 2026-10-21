@@ -1,293 +1,81 @@
 "use client"
 
-import { useState, useRef } from "react"
-import { CheckCircle2, TrendingUp, BadgeCheck, CalendarClock, Upload, X } from "lucide-react"
+import { useRef, useState } from "react"
+import { BadgeCheck, CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, ShieldCheck, TrendingUp, Upload, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 const perks = [
-  {
-    icon: TrendingUp,
-    title: "Homeowners who are ready to hire",
-    desc: "Every lead comes with the address, roof type, and measurements already sorted out — so you can quote without a site visit.",
-  },
-  {
-    icon: BadgeCheck,
-    title: "A profile homeowners trust",
-    desc: "Once we've checked your company out, you get a verified badge on your listing that sets you apart.",
-  },
-  {
-    icon: CalendarClock,
-    title: "Only the jobs you want",
-    desc: "Take the leads that fit your crew and your calendar. Skip the rest — there's no penalty for passing.",
-  },
+  { icon: TrendingUp, title: "Homeowners who are ready to hire", desc: "Every lead comes with the address, roof type, and measurements already sorted out." },
+  { icon: BadgeCheck, title: "A profile homeowners trust", desc: "Once we've checked your company out, you get a verified badge on your listing." },
+  { icon: CalendarClock, title: "Only the jobs you want", desc: "Take the leads that fit your crew and calendar — skip the rest with no penalty." },
 ]
 
-const serviceTypes = ["Asphalt", "Metal", "Cedar shake", "Slate", "Flat / commercial"]
+const exteriorServices = ["Roofing", "Siding", "Soffit", "Fascia", "Eavestrough / gutters"]
+const roofServices = ["New installation", "Replacement", "Repairs", "Inspection"]
+const roofTypes = ["Asphalt shingles", "Metal roofing", "Other roofing systems"]
+const pitchLabels = ["Flat", "Low", "Low", "Low", "Moderate", "Moderate", "Moderate", "Steep", "Steep", "Steep", "Very steep", "Very steep", "Very steep"]
+
+const stepNames = ["Business profile", "Services & expertise", "Credentials", "Service area", "Quick estimate", "Portfolio & review"]
+
+type FormState = Record<string, string | string[] | boolean>
 
 export function ContractorRegister() {
+  const [step, setStep] = useState(0)
+  const [values, setValues] = useState<FormState>({})
+  const [logo, setLogo] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
-  const [services, setServices] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  const [logo, setLogo] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
-  function toggleService(s: string) {
-    setServices((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]))
+  const setValue = (key: string, value: string | boolean | string[]) => setValues((prev) => ({ ...prev, [key]: value }))
+  const getList = (key: string) => (Array.isArray(values[key]) ? values[key] as string[] : [])
+  const toggle = (key: string, value: string) => setValue(key, getList(key).includes(value) ? getList(key).filter((item) => item !== value) : [...getList(key), value])
+  const stepValid = () => {
+    if (step === 0) return Boolean(values.business && values.contact && values.email && values.phone && values.description)
+    if (step === 1) return getList("services").length > 0
+    if (step === 3) return Boolean(values.postalCode && values.city && values.province)
+    if (step === 4) return values.quickEstimates === false || Boolean(values.pitchConfirmed)
+    return true
   }
 
-  function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
-    setError("")
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!file.type.startsWith("image/")) {
-      setError("Please choose an image file for your logo.")
-      return
-    }
-    // Keep it small so the whole application stays a lightweight payload.
-    if (file.size > 1_000_000) {
-      setError("Logo must be under 1 MB.")
-      return
-    }
-    const reader = new FileReader()
-    reader.onload = () => setLogo(typeof reader.result === "string" ? reader.result : null)
-    reader.readAsDataURL(file)
-  }
-
-  function clearLogo() {
-    setLogo(null)
-    if (fileInputRef.current) fileInputRef.current.value = ""
-  }
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    setLoading(true)
-    setError("")
-    const form = new FormData(e.currentTarget)
-    const area = String(form.get("area") ?? "")
-    const postalCode = String(form.get("postalCode") ?? "")
-    const yearRaw = String(form.get("yearEstablished") ?? "").trim()
+  async function submit() {
+    setLoading(true); setError("")
     const res = await fetch("/api/contractors", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        company: form.get("business"),
-        contactName: form.get("contact"),
-        email: form.get("email"),
-        phone: form.get("phone"),
-        serviceArea: area,
-        postalCode,
-        specialties: services.map((s) => s.toLowerCase()),
-        description: String(form.get("description") ?? "").trim() || undefined,
-        yearEstablished: yearRaw ? Number(yearRaw) : undefined,
-        logoUrl: logo ?? undefined,
+        company: values.business, contactName: values.contact, email: values.email, phone: values.phone,
+        serviceArea: values.city, postalCode: values.postalCode, specialties: getList("services").map((s) => s.toLowerCase()),
+        description: values.description, yearEstablished: values.yearEstablished ? Number(values.yearEstablished) : undefined,
+        logoUrl: logo ?? undefined, onboarding: values,
       }),
     })
     setLoading(false)
-    if (res.ok) {
-      setSubmitted(true)
-    } else {
-      const data = (await res.json().catch(() => ({}))) as { error?: string }
-      setError(data.error ?? "Something went wrong. Please try again.")
-    }
+    if (res.ok) setSubmitted(true)
+    else setError((await res.json().catch(() => ({})) as { error?: string }).error ?? "Something went wrong. Please try again.")
   }
+
+  function next() { if (step < 5) setStep((current) => current + 1); else void submit() }
 
   return (
     <section id="contractors" className="border-b border-border bg-foreground text-background">
       <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
-        <div className="grid gap-12 lg:grid-cols-2 lg:gap-16">
+        <div className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
           <div>
-            <p className="font-mono text-sm font-medium uppercase tracking-widest text-background/60">
-              For contractors
-            </p>
-            <h2 className="mt-3 font-heading text-4xl font-bold tracking-tight text-balance sm:text-5xl">
-              Get roofing jobs from homeowners ready to hire.
-            </h2>
-            <p className="mt-5 max-w-md text-lg leading-relaxed text-background/70 text-pretty">
-              List your company and we&apos;ll send you leads from homeowners in your area — each one
-              with the roof details already worked out. Apply once, and we&apos;ll review your
-              business before you go live.
-            </p>
-
-            <div className="mt-10 space-y-6">
-              {perks.map((perk) => (
-                <div key={perk.title} className="flex gap-4">
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent">
-                    <perk.icon className="h-5 w-5 text-accent-foreground" />
-                  </span>
-                  <div>
-                    <h3 className="font-heading font-bold">{perk.title}</h3>
-                    <p className="mt-1 text-sm leading-relaxed text-background/60">{perk.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <p className="font-mono text-sm font-medium uppercase tracking-widest text-background/60">For contractors</p>
+            <h2 className="mt-3 font-heading text-4xl font-bold tracking-tight text-balance sm:text-5xl">Get roofing jobs from homeowners ready to hire.</h2>
+            <p className="mt-5 max-w-md text-lg leading-relaxed text-background/70">Create a complete business profile, get matched with the right homeowners, and show off the credentials that set your crew apart.</p>
+            <div className="mt-10 space-y-6">{perks.map((perk) => <div key={perk.title} className="flex gap-4"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent"><perk.icon className="h-5 w-5 text-accent-foreground" /></span><div><h3 className="font-heading font-bold">{perk.title}</h3><p className="mt-1 text-sm leading-relaxed text-background/60">{perk.desc}</p></div></div>)}</div>
           </div>
-
           <div className="rounded-2xl bg-background p-6 text-foreground shadow-2xl sm:p-8">
-            {!submitted ? (
-              <form onSubmit={handleSubmit}>
-                <h3 className="font-heading text-2xl font-bold">Apply to join the network</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Applications are reviewed within 2 business days.
-                </p>
-
-                <div className="mt-6 grid gap-4">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Field label="Business name" id="business" placeholder="Summit Roofing Co." />
-                    <Field label="Contact name" id="contact" placeholder="Jane Doe" />
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Field label="Email" id="email" type="email" placeholder="you@company.com" />
-                    <Field label="Phone" id="phone" type="tel" placeholder="(555) 123-4567" />
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Field label="Service area (city/region)" id="area" placeholder="Greater Sudbury, ON" />
-                    <Field
-                      label="Primary postal code"
-                      id="postalCode"
-                      placeholder="P3A 1B2"
-                    />
-                  </div>
-                  <p className="-mt-2 text-xs text-muted-foreground">
-                    We use your postal code to match you with homeowners in your area.
-                  </p>
-
-                  <div>
-                    <span className="mb-2 block text-sm font-medium">Services offered</span>
-                    <div className="flex flex-wrap gap-2">
-                      {serviceTypes.map((s) => {
-                        const active = services.includes(s)
-                        return (
-                          <button
-                            key={s}
-                            type="button"
-                            onClick={() => toggleService(s)}
-                            className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
-                              active
-                                ? "border-accent bg-accent text-accent-foreground"
-                                : "border-input hover:border-foreground/30"
-                            }`}
-                          >
-                            {s}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  {/* About us / company description */}
-                  <div>
-                    <label htmlFor="description" className="mb-2 block text-sm font-medium">
-                      About your company <span className="font-normal text-muted-foreground">(optional)</span>
-                    </label>
-                    <textarea
-                      id="description"
-                      name="description"
-                      rows={3}
-                      maxLength={1000}
-                      placeholder="Tell homeowners who you are, how long you've been roofing, and what makes your crew stand out."
-                      className="w-full rounded-lg border border-input bg-background px-3 py-2 text-base outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/30"
-                    />
-                  </div>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {/* Year established */}
-                    <div>
-                      <label htmlFor="yearEstablished" className="mb-2 block text-sm font-medium">
-                        Year established <span className="font-normal text-muted-foreground">(optional)</span>
-                      </label>
-                      <input
-                        id="yearEstablished"
-                        name="yearEstablished"
-                        type="number"
-                        min={1900}
-                        max={new Date().getFullYear()}
-                        placeholder="2008"
-                        className="h-11 w-full rounded-lg border border-input bg-background px-3 text-base outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/30"
-                      />
-                    </div>
-
-                    {/* Logo upload */}
-                    <div>
-                      <span className="mb-2 block text-sm font-medium">
-                        Company logo <span className="font-normal text-muted-foreground">(optional)</span>
-                      </span>
-                      {logo ? (
-                        <div className="flex items-center gap-3 rounded-lg border border-input p-2">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={logo || "/placeholder.svg"}
-                            alt="Company logo preview"
-                            className="h-11 w-11 rounded-md border border-border object-contain"
-                          />
-                          <span className="flex-1 truncate text-sm text-muted-foreground">Logo added</span>
-                          <button
-                            type="button"
-                            onClick={clearLogo}
-                            aria-label="Remove logo"
-                            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-input text-sm text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
-                        >
-                          <Upload className="h-4 w-4" />
-                          Upload logo
-                        </button>
-                      )}
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handleLogoChange}
-                        className="hidden"
-                      />
-                      <p className="mt-1 text-xs text-muted-foreground">PNG or JPG, up to 1 MB.</p>
-                    </div>
-                  </div>
-                </div>
-
-                {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
-                <Button
-                  type="submit"
-                  disabled={loading}
-                  className="mt-6 h-12 w-full bg-accent text-base text-accent-foreground hover:bg-accent/90"
-                >
-                  {loading ? "Submitting…" : "Submit application"}
-                </Button>
-                <p className="mt-3 text-center text-xs text-muted-foreground">
-                  By applying you agree to RoofPitch&apos;s contractor terms.
-                </p>
-              </form>
-            ) : (
-              <div className="flex flex-col items-center py-10 text-center">
-                <span className="flex h-16 w-16 items-center justify-center rounded-full bg-accent">
-                  <CheckCircle2 className="h-9 w-9 text-accent-foreground" />
-                </span>
-                <h3 className="mt-6 font-heading text-2xl font-bold">Application received</h3>
-                <p className="mt-2 max-w-sm text-muted-foreground text-pretty">
-                  Thanks for applying! Our team will review your details and reach out within 2
-                  business days about getting your approved badge.
-                </p>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setSubmitted(false)
-                    setServices([])
-                    clearLogo()
-                  }}
-                  className="mt-8 h-11"
-                >
-                  Submit another application
-                </Button>
-              </div>
-            )}
+            {!submitted ? <>
+              <div className="flex items-center justify-between gap-4"><div><p className="text-sm font-medium text-accent">Step {step + 1} of 6</p><h3 className="mt-1 font-heading text-2xl font-bold">{stepNames[step]}</h3></div><span className="text-sm text-muted-foreground">{Math.round(((step + 1) / 6) * 100)}%</span></div>
+              <div className="mt-5 flex gap-1.5" aria-label="Onboarding progress">{stepNames.map((name, index) => <span key={name} className={`h-1.5 flex-1 rounded-full ${index <= step ? "bg-accent" : "bg-muted"}`} title={name} />)}</div>
+              <div className="mt-8 min-h-[410px] animate-in fade-in duration-300">{step === 0 && <BusinessStep values={values} setValue={setValue} logo={logo} setLogo={setLogo} fileRef={fileRef} />}{step === 1 && <ServicesStep values={values} toggle={toggle} />}{step === 2 && <CredentialsStep values={values} setValue={setValue} />}{step === 3 && <AreaStep values={values} setValue={setValue} />}{step === 4 && <EstimateStep values={values} setValue={setValue} />}{step === 5 && <PortfolioStep values={values} setValue={setValue} />}</div>
+              {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
+              <div className="mt-6 flex gap-3 border-t border-border pt-6"><Button type="button" variant="outline" onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={step === 0} className="h-12 flex-1"><ChevronLeft className="mr-1 h-4 w-4" /> Back</Button><Button type="button" onClick={next} disabled={loading || !stepValid()} className="h-12 flex-1 bg-accent text-accent-foreground hover:bg-accent/90">{loading ? "Submitting…" : step === 5 ? "Submit application" : "Continue"}{step < 5 && <ChevronRight className="ml-1 h-4 w-4" />}</Button></div>
+              <p className="mt-3 text-center text-xs text-muted-foreground">Save your progress by moving between steps. You can update your profile after approval.</p>
+            </> : <div className="flex flex-col items-center py-16 text-center"><span className="flex h-16 w-16 items-center justify-center rounded-full bg-accent"><CheckCircle2 className="h-9 w-9 text-accent-foreground" /></span><h3 className="mt-6 font-heading text-2xl font-bold">Application received</h3><p className="mt-2 max-w-sm text-muted-foreground">Thanks for applying. Our team will review your business and credentials before your profile goes live.</p></div>}
           </div>
         </div>
       </div>
@@ -295,30 +83,15 @@ export function ContractorRegister() {
   )
 }
 
-function Field({
-  label,
-  id,
-  type = "text",
-  placeholder,
-}: {
-  label: string
-  id: string
-  type?: string
-  placeholder?: string
-}) {
-  return (
-    <div>
-      <label htmlFor={id} className="mb-2 block text-sm font-medium">
-        {label}
-      </label>
-      <input
-        id={id}
-        name={id}
-        type={type}
-        required
-        placeholder={placeholder}
-        className="h-11 w-full rounded-lg border border-input bg-background px-3 text-base outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/30"
-      />
-    </div>
-  )
-}
+function TextField({ label, name, value, setValue, type = "text", required = false, placeholder = "" }: { label: string; name: string; value: FormState; setValue: (key: string, value: string) => void; type?: string; required?: boolean; placeholder?: string }) { return <label className="grid gap-2 text-sm font-medium">{label}{required && <span className="text-accent"> *</span>}<input required={required} type={type} value={String(value[name] ?? "")} onChange={(e) => setValue(name, e.target.value)} placeholder={placeholder} className="h-11 rounded-lg border border-input bg-background px-3 text-base font-normal outline-none focus:border-accent focus:ring-2 focus:ring-accent/30" /></label> }
+function ChoiceGrid({ options, selected, onToggle, multi = false }: { options: string[]; selected: string[]; onToggle: (value: string) => void; multi?: boolean }) { return <div className="grid gap-2 sm:grid-cols-2">{options.map((option) => <button key={option} type="button" onClick={() => onToggle(option)} aria-pressed={selected.includes(option)} className={`rounded-xl border p-3 text-left text-sm transition-colors ${selected.includes(option) ? "border-accent bg-accent/10 ring-2 ring-accent/20" : "border-input hover:border-accent/60"}`}>{selected.includes(option) && <CheckCircle2 className="float-right h-4 w-4 text-accent" />}{option}</button>)}</div> }
+function SectionTitle({ title, description }: { title: string; description: string }) { return <div><h4 className="font-heading text-xl font-bold">{title}</h4><p className="mt-1 text-sm text-muted-foreground">{description}</p></div> }
+
+function BusinessStep({ values, setValue, logo, setLogo, fileRef }: { values: FormState; setValue: (key: string, value: string) => void; logo: string | null; setLogo: (value: string | null) => void; fileRef: React.RefObject<HTMLInputElement | null> }) { return <div className="grid gap-5"><SectionTitle title="Tell homeowners who you are." description="Create the business profile that appears when homeowners compare contractors." /><div className="grid gap-4 sm:grid-cols-2"><TextField label="Business name" name="business" value={values} setValue={setValue} required placeholder="Summit Roofing Co." /><TextField label="Contact person's name" name="contact" value={values} setValue={setValue} required placeholder="Jane Doe" /><TextField label="Business email" name="email" type="email" value={values} setValue={setValue} required placeholder="you@company.com" /><TextField label="Business phone" name="phone" type="tel" value={values} setValue={setValue} required placeholder="(555) 123-4567" /><TextField label="Year established" name="yearEstablished" type="number" value={values} setValue={setValue} placeholder="2008" /><TextField label="Business website" name="website" type="url" value={values} setValue={setValue} placeholder="https://yourcompany.com" /></div><label className="grid gap-2 text-sm font-medium">Company summary *<textarea required value={String(values.description ?? "")} onChange={(e) => setValue("description", e.target.value)} maxLength={500} rows={4} placeholder="Tell homeowners what makes your crew stand out." className="rounded-lg border border-input bg-background px-3 py-2 text-base font-normal outline-none focus:border-accent focus:ring-2 focus:ring-accent/30" /></label><LogoPicker logo={logo} setLogo={setLogo} fileRef={fileRef} /></div> }
+function LogoPicker({ logo, setLogo, fileRef }: { logo: string | null; setLogo: (value: string | null) => void; fileRef: React.RefObject<HTMLInputElement | null> }) { function change(e: React.ChangeEvent<HTMLInputElement>) { const file = e.target.files?.[0]; if (!file || !file.type.startsWith("image/") || file.size > 1_000_000) return; const reader = new FileReader(); reader.onload = () => setLogo(typeof reader.result === "string" ? reader.result : null); reader.readAsDataURL(file) } return <div><span className="mb-2 block text-sm font-medium">Company logo <span className="font-normal text-muted-foreground">(recommended)</span></span>{logo ? <div className="flex items-center gap-3 rounded-lg border border-input p-2"><img src={logo} alt="Company logo preview" className="h-11 w-11 rounded-md object-contain" /><span className="flex-1 text-sm text-muted-foreground">Logo added</span><button type="button" onClick={() => setLogo(null)} aria-label="Remove logo"><X className="h-4 w-4" /></button></div> : <button type="button" onClick={() => fileRef.current?.click()} className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-input text-sm text-muted-foreground hover:border-accent"><Upload className="h-4 w-4" /> Upload logo</button>}<input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={change} className="hidden" /></div> }
+function ServicesStep({ values, toggle }: { values: FormState; toggle: (key: string, value: string) => void }) { return <div className="grid gap-6"><SectionTitle title="What services do you offer?" description="Select all exterior work your business provides." /><div><p className="mb-2 text-sm font-medium">Exterior services *</p><ChoiceGrid options={exteriorServices} selected={Array.isArray(values.services) ? values.services : []} onToggle={(v) => toggle("services", v)} /></div><div><p className="mb-2 text-sm font-medium">Roofing work offered</p><ChoiceGrid options={roofServices} selected={Array.isArray(values.roofWork) ? values.roofWork : []} onToggle={(v) => toggle("roofWork", v)} /></div><div><p className="mb-2 text-sm font-medium">Roof types installed</p><ChoiceGrid options={roofTypes} selected={Array.isArray(values.roofTypes) ? values.roofTypes : []} onToggle={(v) => toggle("roofTypes", v)} /></div><div><p className="mb-2 text-sm font-medium">Properties served</p><ChoiceGrid options={["Residential", "Commercial"]} selected={Array.isArray(values.properties) ? values.properties : []} onToggle={(v) => toggle("properties", v)} /></div></div> }
+function CredentialsStep({ values, setValue }: { values: FormState; setValue: (key: string, value: string | boolean) => void }) { return <div className="grid gap-6"><SectionTitle title="Tell us about your credentials." description="Claims are reviewed separately and are not shown as verified until our team confirms them." /><Credential title="IKO ROOFPRO" value={String(values.iko ?? "")} onChange={(v) => setValue("iko", v)} options={["Yes, I am a member", "Application pending", "No", "Not sure"]} /><Credential title="BP Certified Roofer" value={String(values.bp ?? "")} onChange={(v) => setValue("bp", v)} options={["Yes, I am certified", "Application pending", "No", "Not sure"]} /><Credential title="Commercial general liability insurance" value={String(values.insurance ?? "")} onChange={(v) => setValue("insurance", v)} options={["Yes", "No", "Renewal or documentation pending"]} />{values.insurance === "Yes" && <div className="grid gap-4 sm:grid-cols-2"><TextField label="Coverage amount" name="coverage" value={values} setValue={(k, v) => setValue(k, v)} placeholder="$2,000,000" /><TextField label="Policy expiry date" name="policyExpiry" type="date" value={values} setValue={(k, v) => setValue(k, v)} /></div>}<Credential title="WSIB / workplace coverage" value={String(values.wsib ?? "")} onChange={(v) => setValue("wsib", v)} options={["Applicable WSIB coverage", "Does not apply", "Need to provide documentation", "Not sure"]} /></div> }
+function Credential({ title, value, onChange, options }: { title: string; value: string; onChange: (value: string) => void; options: string[] }) { return <fieldset><legend className="mb-2 text-sm font-medium">{title}</legend><div className="grid gap-2 sm:grid-cols-2">{options.map((option) => <button key={option} type="button" onClick={() => onChange(option)} aria-pressed={value === option} className={`rounded-lg border p-3 text-left text-sm ${value === option ? "border-accent bg-accent/10 ring-2 ring-accent/20" : "border-input hover:border-accent/60"}`}>{option}</button>)}</div></fieldset> }
+function AreaStep({ values, setValue }: { values: FormState; setValue: (key: string, value: string) => void }) { return <div className="grid gap-5"><SectionTitle title="Where do you work?" description="Your postal code and travel radius help us match you with the right homeowner requests." /><div className="grid gap-4 sm:grid-cols-2"><TextField label="Primary postal code" name="postalCode" value={values} setValue={setValue} required placeholder="P3A 1B2" /><TextField label="City" name="city" value={values} setValue={setValue} required placeholder="Greater Sudbury" /></div><label className="grid gap-2 text-sm font-medium">Province<select value={String(values.province ?? "Ontario")} onChange={(e) => setValue("province", e.target.value)} className="h-11 rounded-lg border border-input bg-background px-3 text-base font-normal"><option>Ontario</option><option>Quebec</option><option>Manitoba</option><option>Alberta</option></select></label><div><p className="mb-2 text-sm font-medium">Maximum travel radius</p><ChoiceGrid options={["5 km", "50 km", "100 km", "250 km"]} selected={[String(values.radius ?? "50 km")]} onToggle={(v) => setValue("radius", v)} /></div><label className="grid gap-2 text-sm font-medium">Other cities or postal areas served<textarea value={String(values.otherAreas ?? "")} onChange={(e) => setValue("otherAreas", e.target.value)} rows={3} className="rounded-lg border border-input bg-background px-3 py-2 text-base font-normal" /></label></div> }
+function EstimateStep({ values, setValue }: { values: FormState; setValue: (key: string, value: string | boolean) => void }) { const enabled = values.quickEstimates === true; return <div className="grid gap-6"><SectionTitle title="Set your quick estimate charges." description="Enter a fixed pitch-related charge, not a complete roof replacement price." /><Credential title="Offer quick roof estimates through this platform?" value={enabled ? "Yes" : values.quickEstimates === false ? "No" : ""} onChange={(v) => setValue("quickEstimates", v === "Yes")} options={["Yes", "No"]} />{enabled && <><Credential title="What does your pitch charge represent?" value={String(values.pitchBasis ?? "")} onChange={(v) => setValue("pitchBasis", v)} options={["Additional fixed pitch charge", "Total fixed charge for a defined job"]} /><div><p className="mb-2 text-sm font-medium">Fixed charge by roof pitch (CAD)</p><div className="grid gap-2 sm:grid-cols-2">{pitchLabels.map((label, index) => <label key={index} className="flex items-center gap-2 rounded-lg border border-input p-2 text-sm"><span className="w-12 shrink-0 font-medium">{index}/12</span><span className="w-16 text-xs text-muted-foreground">{label}</span><input type="number" min="0" step="1" value={String(values[`pitch_${index}`] ?? "")} onChange={(e) => setValue(`pitch_${index}`, e.target.value)} placeholder="$" className="h-9 min-w-0 flex-1 rounded border border-input bg-background px-2" /></label>)}</div><label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={Boolean(values.pitchConfirmed)} onChange={(e) => setValue("pitchConfirmed", e.target.checked)} className="mt-1 h-4 w-4 accent-[var(--accent)]" />I understand these are fixed charges for the selected pricing basis.</label></div></>}</div> }
+function PortfolioStep({ values, setValue }: { values: FormState; setValue: (key: string, value: string) => void }) { return <div className="grid gap-6"><SectionTitle title="Complete your profile." description="Give homeowners confidence and tell us when you're ready for new work." /><Credential title="Are you currently accepting new projects?" value={String(values.availability ?? "")} onChange={(v) => setValue("availability", v)} options={["Yes, accepting projects", "Yes, availability limited", "Not currently accepting"]} /><div className="grid gap-4 sm:grid-cols-2"><TextField label="Earliest available start date" name="startDate" type="date" value={values} setValue={setValue} /><TextField label="Workmanship warranty" name="warranty" value={values} setValue={setValue} placeholder="e.g. 10 years" /></div><Credential title="Is job-site cleanup included?" value={String(values.cleanup ?? "")} onChange={(v) => setValue("cleanup", v)} options={["Yes", "No", "Depends on the project"]} /><Credential title="Preferred contact method" value={String(values.contactMethod ?? "")} onChange={(v) => setValue("contactMethod", v)} options={["Phone", "Email", "Platform messages"]} /><div className="rounded-xl border border-border bg-muted/30 p-4 text-sm"><ShieldCheck className="mb-2 h-5 w-5 text-accent" /><p className="font-medium">Final confirmation</p><p className="mt-1 text-muted-foreground">By submitting, you confirm your business information and credential claims are accurate and agree to update them when they change.</p></div></div> }
