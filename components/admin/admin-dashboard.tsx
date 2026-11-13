@@ -93,6 +93,21 @@ export function AdminDashboard() {
     mutate()
   }
 
+  async function setVerification(
+    id: string,
+    field: "verifiedBusiness" | "verifiedIko" | "verifiedBp" | "verifiedInsurance" | "verifiedWsib",
+    value: boolean,
+  ) {
+    setBusyId(id)
+    await fetch(`/api/admin/contractors/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ verification: { [field]: value } }),
+    })
+    setBusyId(null)
+    mutate()
+  }
+
   async function logout() {
     await fetch("/api/admin/login", { method: "DELETE" })
     router.refresh()
@@ -178,6 +193,7 @@ export function AdminDashboard() {
           >
             <div className="min-w-0">
               <div className="flex items-center gap-3">
+                {c.logoUrl ? <img src={c.logoUrl} alt={`${c.company} logo`} className="size-10 rounded-md border border-border object-contain p-1" /> : <span className="flex size-10 items-center justify-center rounded-md bg-secondary text-xs font-bold text-muted-foreground" aria-hidden="true">{c.company.slice(0, 2).toUpperCase()}</span>}
                 <h3 className="font-heading text-lg font-bold">{c.company}</h3>
                 <span
                   className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${statusStyles[c.status]}`}
@@ -213,6 +229,48 @@ export function AdminDashboard() {
                   ))}
                 </div>
               )}
+              {c.description && <p className="mt-3 max-w-3xl text-sm text-muted-foreground">{c.description}</p>}
+              <details className="mt-4 rounded-lg border border-border p-3">
+                <summary className="cursor-pointer text-sm font-medium">Review submitted profile details</summary>
+                <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+                  {c.yearEstablished && <div><dt className="text-muted-foreground">Established</dt><dd>{c.yearEstablished}</dd></div>}
+                  {c.website && <div><dt className="text-muted-foreground">Website</dt><dd>{c.website}</dd></div>}
+                  {Object.entries(c.onboarding ?? {}).map(([key, value]) => (
+                    <div key={key}>
+                      <dt className="capitalize text-muted-foreground">{key.replace(/([A-Z])/g, " $1")}</dt>
+                      <dd>{Array.isArray(value) ? value.join(", ") : typeof value === "boolean" ? value ? "Yes" : "No" : String(value || "Not provided")}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </details>
+              <div className="mt-4 rounded-lg border border-border p-3">
+                <p className="text-sm font-semibold">Mark credentials verified</p>
+                <p className="mt-1 text-xs text-muted-foreground">Only enable these after checking the supporting evidence.</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {([
+                    ["verifiedBusiness", "Business"],
+                    ["verifiedIko", "IKO ROOFPRO"],
+                    ["verifiedBp", "BP"],
+                    ["verifiedInsurance", "Insurance"],
+                    ["verifiedWsib", "WSIB"],
+                  ] as const).map(([field, label]) => {
+                    const isVerified = c[field]
+                    return (
+                      <Button
+                        key={field}
+                        type="button"
+                        size="sm"
+                        variant={isVerified ? "default" : "outline"}
+                        disabled={busyId === c.id}
+                        onClick={() => setVerification(c.id, field, !isVerified)}
+                        aria-pressed={isVerified}
+                      >
+                        {isVerified ? "Verified" : "Verify"} {label}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
 
             <div className="mt-4 flex shrink-0 gap-2 sm:mt-0 sm:pl-4">

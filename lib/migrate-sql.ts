@@ -20,11 +20,32 @@ CREATE TABLE IF NOT EXISTS contractors (
   service_area  VARCHAR(120),
   postal_prefix VARCHAR(3),
   specialties   TEXT[] NOT NULL DEFAULT '{}',
+  description   VARCHAR(1000),
+  year_established INTEGER,
+  logo_url      TEXT,
+  website       VARCHAR(500),
+  onboarding    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  verified_business BOOLEAN NOT NULL DEFAULT false,
+  verified_iko BOOLEAN NOT NULL DEFAULT false,
+  verified_bp BOOLEAN NOT NULL DEFAULT false,
+  verified_insurance BOOLEAN NOT NULL DEFAULT false,
+  verified_wsib BOOLEAN NOT NULL DEFAULT false,
   status        VARCHAR(12) NOT NULL DEFAULT 'pending'
                 CHECK (status IN ('pending', 'approved', 'rejected')),
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE contractors ADD COLUMN IF NOT EXISTS description VARCHAR(1000);
+ALTER TABLE contractors ADD COLUMN IF NOT EXISTS year_established INTEGER;
+ALTER TABLE contractors ADD COLUMN IF NOT EXISTS logo_url TEXT;
+ALTER TABLE contractors ADD COLUMN IF NOT EXISTS website VARCHAR(500);
+ALTER TABLE contractors ADD COLUMN IF NOT EXISTS onboarding JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE contractors ADD COLUMN IF NOT EXISTS verified_business BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE contractors ADD COLUMN IF NOT EXISTS verified_iko BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE contractors ADD COLUMN IF NOT EXISTS verified_bp BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE contractors ADD COLUMN IF NOT EXISTS verified_insurance BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE contractors ADD COLUMN IF NOT EXISTS verified_wsib BOOLEAN NOT NULL DEFAULT false;
 
 CREATE INDEX IF NOT EXISTS idx_contractors_status ON contractors(status);
 CREATE INDEX IF NOT EXISTS idx_contractors_postal_prefix ON contractors(postal_prefix);

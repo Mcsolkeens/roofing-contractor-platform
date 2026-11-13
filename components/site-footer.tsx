@@ -5,16 +5,16 @@ const columns = [
   {
     title: "Homeowners",
     links: [
-      { label: "How it works", href: "#how-it-works" },
-      { label: "Find a roofer", href: "#get-matched" },
-      { label: "FAQ", href: "#faq" },
+      { label: "How it works", href: "/#how-it-works" },
+      { label: "Find a roofer", href: "/contractors" },
+      { label: "FAQ", href: "/#faq" },
     ],
   },
   {
     title: "Contractors",
     links: [
-      { label: "Join the network", href: "#contractors" },
-      { label: "Contractor login", href: "#contractors" },
+      { label: "Join the network", href: "/#contractors" },
+      { label: "Contractor login", href: "/#contractors" },
     ],
   },
   {
@@ -43,7 +43,7 @@ export function SiteFooter() {
           </div>
           <Button
             nativeButton={false}
-            render={<a href="#get-matched" />}
+            render={<a href="/#get-matched" />}
             size="lg"
             className="h-12 shrink-0 bg-accent px-7 text-base text-accent-foreground hover:bg-accent/90"
           >

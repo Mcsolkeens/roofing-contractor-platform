@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getContractorRepository, normalizeFsa, type ContractorInput } from "@/lib/workflow/repository"
+import { sanitizeWebsite, toPublicContractor } from "@/lib/public-contractors"
 
 export const runtime = "nodejs"
 
@@ -10,21 +11,16 @@ export const runtime = "nodejs"
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const postalCode = searchParams.get("postalCode") ?? ""
-  const limit = Number(searchParams.get("limit") ?? 6)
+  const requestedLimit = Number(searchParams.get("limit") ?? 100)
+  const limit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 100
 
   const repo = getContractorRepository()
   const contractors = postalCode
     ? await repo.findNearest(postalCode, limit)
     : (await repo.listByStatus("approved")).slice(0, limit)
 
-  // Only expose fields the public page needs (no internal email/phone).
   return NextResponse.json({
-    contractors: contractors.map((c) => ({
-      id: c.id,
-      company: c.company,
-      serviceArea: c.serviceArea ?? "",
-      specialties: c.specialties,
-    })),
+    contractors: contractors.map(toPublicContractor),
   })
 }
 
@@ -33,7 +29,7 @@ export async function GET(req: Request) {
  * The application is stored with status "pending" for an admin to review.
  */
 export async function POST(req: Request) {
-  let body: Partial<ContractorInput> & { postalCode?: string }
+  let body: Partial<ContractorInput> & { postalCode?: string; onboarding?: Record<string, unknown> }
   try {
     body = await req.json()
   } catch {
@@ -71,6 +67,15 @@ export async function POST(req: Request) {
       ? body.logoUrl
       : undefined
 
+  const onboarding =
+    body.onboarding && typeof body.onboarding === "object" && !Array.isArray(body.onboarding)
+      ? body.onboarding
+      : {}
+  if (JSON.stringify(onboarding).length > 40_000) {
+    return NextResponse.json({ error: "Application details are too large." }, { status: 400 })
+  }
+  const website = sanitizeWebsite(body.website) ?? undefined
+
   const repo = getContractorRepository()
   const contractor = await repo.create({
     company: body.company,
@@ -83,6 +88,8 @@ export async function POST(req: Request) {
     description,
     yearEstablished,
     logoUrl,
+    website,
+    onboarding,
   })
 
   return NextResponse.json(
