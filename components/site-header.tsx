@@ -5,11 +5,11 @@ import { Menu, X, Home } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 const navLinks = [
-  { label: "How it works", href: "#how-it-works" },
-  { label: "Get a quote", href: "#get-matched" },
-  { label: "Find a roofer", href: "#get-matched" },
-  { label: "For contractors", href: "#contractors" },
-  { label: "FAQ", href: "#faq" },
+  { label: "How it works", href: "/#how-it-works" },
+  { label: "Get a quote", href: "/#get-matched" },
+  { label: "Find a roofer", href: "/contractors" },
+  { label: "For contractors", href: "/#contractors" },
+  { label: "FAQ", href: "/#faq" },
 ]
 
 export function SiteHeader() {
@@ -18,7 +18,7 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <a href="#" className="flex items-center gap-2">
+        <a href="/" className="flex items-center gap-2">
           <span className="flex h-9 w-9 items-center justify-center rounded-md bg-foreground">
             <Home className="h-5 w-5 text-background" />
           </span>
@@ -46,7 +46,7 @@ export function SiteHeader() {
           </Button>
           <Button
             nativeButton={false}
-            render={<a href="#get-matched" />}
+            render={<a href="/#get-matched" />}
             className="bg-accent text-accent-foreground hover:bg-accent/90"
           >
             Find a roofer
@@ -86,7 +86,7 @@ export function SiteHeader() {
             </a>
             <Button
               nativeButton={false}
-              render={<a href="#get-matched" onClick={() => setOpen(false)} />}
+              render={<a href="/#get-matched" onClick={() => setOpen(false)} />}
               className="mt-2 bg-accent text-accent-foreground hover:bg-accent/90"
             >
               Find a roofer

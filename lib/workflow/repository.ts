@@ -34,9 +34,21 @@ export interface Contractor {
   yearEstablished?: number
   /** Company logo as a data URL (uploaded on the application form). */
   logoUrl?: string
+  website?: string
+  onboarding?: Record<string, unknown>
+  verifiedBusiness: boolean
+  verifiedIko: boolean
+  verifiedBp: boolean
+  verifiedInsurance: boolean
+  verifiedWsib: boolean
   status: ContractorStatus
   createdAt: string
 }
+
+export type ContractorVerification = Pick<
+  Contractor,
+  "verifiedBusiness" | "verifiedIko" | "verifiedBp" | "verifiedInsurance" | "verifiedWsib"
+>
 
 export interface ContractorInput {
   company: string
@@ -49,6 +61,8 @@ export interface ContractorInput {
   description?: string
   yearEstablished?: number
   logoUrl?: string
+  website?: string
+  onboarding?: Record<string, unknown>
 }
 
 export type RequestStatus =
@@ -83,6 +97,7 @@ export interface ContractorRepository {
   listByStatus(status: ContractorStatus | "all"): Promise<Contractor[]>
   getById(id: string): Promise<Contractor | undefined>
   setStatus(id: string, status: ContractorStatus): Promise<Contractor>
+  setVerification(id: string, verification: Partial<ContractorVerification>): Promise<Contractor>
   findNearest(postalCode: string, limit: number): Promise<Contractor[]>
   findByIds(ids: string[]): Promise<Contractor[]>
 }
@@ -125,7 +140,7 @@ function areaKey(postal: string): string {
 // tested anywhere. Matching is by "area key" = first 2 chars of the FSA
 // (M5 = downtown Toronto, P3 = Greater Sudbury, K1 = central Ottawa,
 // V6 = Vancouver). Any postal code in one of these areas returns these companies.
-const seedContractors: Contractor[] = [
+const seedContractors: Omit<Contractor, keyof ContractorVerification>[] = [
   // ---- Toronto (area key M5) ----
   { id: "c1", company: "Summit Roofing Co.", contactName: "Dave Nguyen", email: "leads@summitroofing.example", phone: "416-555-0110", serviceArea: "Downtown Toronto", postalPrefix: "M5V", specialties: ["shingles", "metal"], status: "approved", createdAt: new Date().toISOString() },
   { id: "c2", company: "Maple Leaf Exteriors", contactName: "Sarah Bianchi", email: "quotes@mapleleaf.example", phone: "416-555-0134", serviceArea: "Downtown Toronto", postalPrefix: "M5H", specialties: ["shingles", "flat"], status: "approved", createdAt: new Date().toISOString() },
@@ -151,7 +166,14 @@ const seedContractors: Contractor[] = [
   { id: "c16", company: "Granville Roofing Co.", contactName: "Sophie Nguyen", email: "hello@granvilleroof.example", phone: "604-555-0147", serviceArea: "Yaletown", postalPrefix: "V6Z", specialties: ["shingles", "flat"], status: "approved", createdAt: new Date().toISOString() },
 ]
 
-const memContractors: Contractor[] = [...seedContractors]
+const memContractors: Contractor[] = seedContractors.map((contractor) => ({
+  ...contractor,
+  verifiedBusiness: false,
+  verifiedIko: false,
+  verifiedBp: false,
+  verifiedInsurance: false,
+  verifiedWsib: false,
+}))
 const memRequests = new Map<string, MeasurementRequest>()
 
 export class InMemoryContractorRepository implements ContractorRepository {
@@ -159,6 +181,11 @@ export class InMemoryContractorRepository implements ContractorRepository {
     const contractor: Contractor = {
       id: `c_${Date.now()}`,
       ...input,
+      verifiedBusiness: false,
+      verifiedIko: false,
+      verifiedBp: false,
+      verifiedInsurance: false,
+      verifiedWsib: false,
       status: "pending",
       createdAt: new Date().toISOString(),
     }
@@ -180,6 +207,13 @@ export class InMemoryContractorRepository implements ContractorRepository {
     if (!c) throw new Error(`Contractor ${id} not found`)
     c.status = status
     return c
+  }
+
+  async setVerification(id: string, verification: Partial<ContractorVerification>): Promise<Contractor> {
+    const contractor = memContractors.find((item) => item.id === id)
+    if (!contractor) throw new Error(`Contractor ${id} not found`)
+    Object.assign(contractor, verification)
+    return contractor
   }
 
   async findNearest(postalCode: string, limit: number): Promise<Contractor[]> {
@@ -266,6 +300,16 @@ interface ContractorRow {
   service_area: string | null
   postal_prefix: string | null
   specialties: string[]
+  description: string | null
+  year_established: number | null
+  logo_url: string | null
+  website: string | null
+  onboarding: Record<string, unknown> | null
+  verified_business: boolean
+  verified_iko: boolean
+  verified_bp: boolean
+  verified_insurance: boolean
+  verified_wsib: boolean
   status: ContractorStatus
   created_at: Date
   // Index signature so this satisfies pg's QueryResultRow constraint.
@@ -282,6 +326,16 @@ function mapContractor(r: ContractorRow): Contractor {
     serviceArea: r.service_area ?? undefined,
     postalPrefix: r.postal_prefix ?? undefined,
     specialties: r.specialties ?? [],
+    description: r.description ?? undefined,
+    yearEstablished: r.year_established ?? undefined,
+    logoUrl: r.logo_url ?? undefined,
+    website: r.website ?? undefined,
+    onboarding: r.onboarding ?? {},
+    verifiedBusiness: r.verified_business ?? false,
+    verifiedIko: r.verified_iko ?? false,
+    verifiedBp: r.verified_bp ?? false,
+    verifiedInsurance: r.verified_insurance ?? false,
+    verifiedWsib: r.verified_wsib ?? false,
     status: r.status,
     createdAt: r.created_at.toISOString(),
   }
@@ -290,8 +344,10 @@ function mapContractor(r: ContractorRow): Contractor {
 export class DbContractorRepository implements ContractorRepository {
   async create(input: ContractorInput): Promise<Contractor> {
     const { rows } = await query<ContractorRow>(
-      `INSERT INTO contractors (company, contact_name, email, phone, service_area, postal_prefix, specialties)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      `INSERT INTO contractors (
+         company, contact_name, email, phone, service_area, postal_prefix, specialties,
+         description, year_established, logo_url, website, onboarding
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [
         input.company,
         input.contactName,
@@ -300,6 +356,11 @@ export class DbContractorRepository implements ContractorRepository {
         input.serviceArea ?? null,
         input.postalPrefix ?? null,
         input.specialties,
+        input.description ?? null,
+        input.yearEstablished ?? null,
+        input.logoUrl ?? null,
+        input.website ?? null,
+        JSON.stringify(input.onboarding ?? {}),
       ],
     )
     return mapContractor(rows[0])
@@ -325,6 +386,33 @@ export class DbContractorRepository implements ContractorRepository {
     const { rows } = await query<ContractorRow>(
       `UPDATE contractors SET status = $2, updated_at = now() WHERE id = $1 RETURNING *`,
       [id, status],
+    )
+    if (!rows[0]) throw new Error(`Contractor ${id} not found`)
+    return mapContractor(rows[0])
+  }
+
+  async setVerification(id: string, verification: Partial<ContractorVerification>): Promise<Contractor> {
+    const columns: Record<keyof ContractorVerification, string> = {
+      verifiedBusiness: "verified_business",
+      verifiedIko: "verified_iko",
+      verifiedBp: "verified_bp",
+      verifiedInsurance: "verified_insurance",
+      verifiedWsib: "verified_wsib",
+    }
+    const fields: string[] = []
+    const values: unknown[] = []
+    for (const [key, column] of Object.entries(columns) as [keyof ContractorVerification, string][]) {
+      const value = verification[key]
+      if (typeof value === "boolean") {
+        values.push(value)
+        fields.push(`${column} = $${values.length}`)
+      }
+    }
+    if (!fields.length) throw new Error("At least one verification value is required")
+    values.push(id)
+    const { rows } = await query<ContractorRow>(
+      `UPDATE contractors SET ${fields.join(", ")}, updated_at = now() WHERE id = $${values.length} RETURNING *`,
+      values,
     )
     if (!rows[0]) throw new Error(`Contractor ${id} not found`)
     return mapContractor(rows[0])
